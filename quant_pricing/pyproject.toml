@@ -1,5 +1,5 @@
 [project]
-name = "quant-pricing"
+name = "exotic-pricing-lab"
 version = "0.1.0"
 
 [build-system]

@@ -129,7 +129,7 @@ def main() -> None:
     ax_h.set_ylabel("ρ(DI put, put vanille)")
 
     ax_b.plot(H_pcts,ratio_half_widths, marker="o", label= "ratio mesuré")
-    ax_b.plot(H_pcts,curve_theoretical,marker="o",label="courbe théorique")
+    ax_b.plot(H_pcts,curve_theoretical,linestyle="--",label="courbe théorique")
     ax_b.axhline(1.0,label="")
     ax_b.set_ylabel("demi-IC CV / demi-IC MC")
     ax_b.set_xlabel("H / S0 ")

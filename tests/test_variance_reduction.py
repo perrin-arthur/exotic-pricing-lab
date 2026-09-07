@@ -475,7 +475,7 @@ def test_pilot_c_elimine_le_biais():
 # BOSS 2 — balayage de barriere                                        [80 XP]
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="BOSS 2")
+
 def test_boss2_artefacts():
     """Le boss ne se valide pas sur du code : il se valide sur ses ARTEFACTS.
 

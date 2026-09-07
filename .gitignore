@@ -5,3 +5,4 @@ __pycache__/
 *.egg-info/
 build
 CLAUDE.md
+PROGRESS.md

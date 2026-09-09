@@ -1,7 +1,4 @@
-import bs
 import numpy as np
-
-from scipy.stats import norm
 
 #gbm
 def gbm(S0,sigma,r,T, N=100_000, rng=None):
@@ -287,12 +284,3 @@ def pilot_c(Y_pilot: np.ndarray, X_pilot: np.ndarray) -> float:
     """
     c = float(np.cov(Y_pilot,X_pilot,ddof=1)[0,1]/np.var(X_pilot,ddof=1))
     return c
-
-
-if __name__ == "__main__":
-    paths = gbm_paths(100, 0.2, 0.05, 1.0, n_steps=50,N=100_000)
-    ST=paths[:,-1]
-    payoff = np.maximum(ST-100,0)
-    prix = np.exp(-0.05*1)*payoff.mean()
-    ic   = 1.96 * (np.exp(-0.05)*payoff).std(ddof=1)/np.sqrt(len(ST))
-    print(prix, "+/-", ic)

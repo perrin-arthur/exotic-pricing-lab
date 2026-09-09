@@ -1,8 +1,6 @@
-import bs
 import numpy as np
 
-from mc_engine import gbm, gbm_paths, pricer_mc_put
-from bs import put_bs
+import bs
 import mc_engine
 
 def di_put(paths,K,H,r,T):
@@ -159,7 +157,3 @@ def di_put_cv(paths: np.ndarray,
     EX = bs.put_bs(paths[0, 0],K,sigma,r,T,q=0.0)
     (estimate, half_width, c_hat, rho_hat) = mc_engine.control_variate(Y,X,EX,c)
     return (estimate, half_width, c_hat, rho_hat)
-
-
-if __name__ == "__main__":
-    print(di_put(mc_engine.gbm_paths(100, 0.1, 0.05, 1, 252, N=100_000), 100, 85, 0.05, 1))

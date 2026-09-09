@@ -20,7 +20,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 import json
 
 import numpy as np
-import pytest
 
 import barriers
 import mc_engine

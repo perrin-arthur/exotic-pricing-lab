@@ -31,13 +31,3 @@ def implied_vol_call(S0, K, r, T, market_price, *, q=0.0, tol=1e-6, max_iter=100
 
         sigma = min(max(sigma - diff/vega, 1e-8), 5.0)  # Newton-Raphson step
     raise RuntimeError(f"no convergence after {max_iter} iterations")
-
-def wrapper_implied_vol(S0, K, r, T, market_price, *, is_call, q=0.0):
-    if is_call:
-        return implied_vol_call(S0, K, r, T, market_price, q=q)
-    else:
-        # For put options, we need to use the put-call parity
-        put_price = market_price
-        call_price = put_price + K * np.exp(-r * T) - S0 * np.exp(-q * T)
-        return implied_vol_call(S0, K, r, T, call_price, q=q)
-    #tbd

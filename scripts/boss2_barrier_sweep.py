@@ -48,7 +48,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import barriers
-from mc_engine import gbm_paths, pilot_c
+from mc_engine import gbm_paths
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FIGURES = ROOT / "figures"

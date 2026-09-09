@@ -18,7 +18,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 import json
 
 import numpy as np
-import pytest
 
 from bs import call_bs
 from heston import (heston_call, heston_cf, heston_paths, heston_put,

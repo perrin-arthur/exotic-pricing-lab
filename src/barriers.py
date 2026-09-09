@@ -1,132 +1,131 @@
+"""Down-and-in / down-and-out put payoffs, evaluated on simulated paths.
+
+These pricers take a path array rather than a model, so they work unchanged on
+Black-Scholes paths (mc_engine.gbm_paths) and on Heston paths
+(heston.heston_paths).
+
+Monitoring is DISCRETE: the barrier is tested at the n_steps+1 simulated dates
+only. A continuously monitored barrier is knocked in more often, so these prices
+carry a discretisation bias that does not vanish as N grows; the Broadie-
+Glasserman-Kou continuity correction is not implemented.
+
+Barrier convention: the knock-in condition is strict, min_t S_t < H. Since the
+knock-out condition is min_t S_t >= H, the two are exact complements and the
+identity DI + DO = vanilla holds pathwise, to machine precision.
+"""
+
 import numpy as np
 
 import bs
 import mc_engine
 
 def di_put(paths,K,H,r,T):
-    """Pricer un down-and-in put sur trajectoires GBM.
+    """Monte-Carlo price of a down-and-in put.
 
-    paths : shape (N, n_steps+1) : trajectoires GBM, S0 en colonne 0.
-    K : strike du put
-    H : barriere
-    r : taux sans risque
-    T : maturite
+    Params
+    ------
+    paths : (N, n_steps+1) simulated paths, S0 in column 0.
+    K : put strike.
+    H : barrier level.
+    r : risk-free rate.
+    T : maturity.
 
-    Retourne (prix, demi-largeur IC 95%) du pricer MC.
+    Returns
+    -------
+    (price, half_width) : price and 95% CI half-width.
     """
     N = paths.shape[0]
     # payoff = max(K-ST,0) * 1_{min(paths) < H}
-    ST = paths[:, -1]   
+    ST = paths[:, -1]
     min_paths = paths.min(axis=1)
     payoff = np.where(min_paths < H, np.maximum(K - ST, 0.0), 0.0)
     disc = np.exp(-r*T) * payoff
     return float(disc.mean()), float(1.96*disc.std(ddof=1)/np.sqrt(N))
 
 def do_put(paths,K,H,r,T):
-    """Pricer un down-and-out put sur trajectoires GBM.
+    """Monte-Carlo price of a down-and-out put.
 
-    paths : shape (N, n_steps+1) : trajectoires GBM, S0 en colonne 0.
-    K : strike du put
-    H : barriere
-    r : taux sans risque
-    T : maturite
+    Params
+    ------
+    paths : (N, n_steps+1) simulated paths, S0 in column 0.
+    K : put strike.
+    H : barrier level.
+    r : risk-free rate.
+    T : maturity.
 
-    Retourne (prix, demi-largeur IC 95%) du pricer MC.
+    Returns
+    -------
+    (price, half_width) : price and 95% CI half-width.
     """
     N = paths.shape[0]
     # payoff = max(K-ST,0) * 1_{min(paths) >=  H}
-    ST = paths[:, -1]     
+    ST = paths[:, -1]
     min_paths = paths.min(axis=1)
     payoff = np.where(min_paths >= H, np.maximum(K - ST, 0.0), 0.0)
     disc = np.exp(-r*T) * payoff
     return float(disc.mean()), float(1.96*disc.std(ddof=1)/np.sqrt(N))
 
 def van_put(paths, K, r, T):
-    """Pricer un put vanille sur trajectoires GBM.
+    """Monte-Carlo price of a vanilla put, on the same path array.
 
-    paths : shape (N, n_steps+1) : trajectoires GBM, S0 en colonne 0.
-    K : strike du put
-    r : taux sans risque
-    T : maturite
+    Params
+    ------
+    paths : (N, n_steps+1) simulated paths, S0 in column 0.
+    K : put strike.
+    r : risk-free rate.
+    T : maturity.
 
-    Retourne (prix, demi-largeur IC 95%) du pricer MC.
+    Returns
+    -------
+    (price, half_width) : price and 95% CI half-width.
     """
     N = paths.shape[0]
-    ST = paths[:, -1]     
+    ST = paths[:, -1]
     payoff = np.maximum(K - ST, 0.0)
     disc = np.exp(-r*T) * payoff
     return float(disc.mean()), float(1.96*disc.std(ddof=1)/np.sqrt(N))
 
 
-# ╔═══════════════════════════════════════════════════════════════╗
-# ║ QUÊTE 2.3 — Contrôle branché sur le DI put            [40 XP] ║
-# ╚═══════════════════════════════════════════════════════════════╝
-# OBJECTIF   : pricer le down-and-in put avec le put vanille comme variable de
-#              contrôle, sur les mêmes trajectoires.
-# DÉBLOQUE   : quête 2.4
-# VALIDATION : pytest tests/test_variance_reduction.py -k di_put
-#
-# INDICE 1 (intuition)  : quel autre payoff, calculable sur les MÊMES chemins,
-#     a un prix que tu connais déjà exactement ET bouge dans le même sens que le
-#     DI put ? Regarde la parité que tu as prouvée dans test_di_do_van.
-# INDICE 2 (structure)  : deux fonctions séparées. La première ne price rien :
-#     elle renvoie les deux vecteurs de payoffs PAR CHEMIN (rien n'est moyenné).
-#     La seconde ne fait aucune statistique : elle récupère les deux vecteurs,
-#     calcule l'espérance exacte du contrôle et délègue à control_variate.
-#     Aucune formule de covariance ne doit réapparaître ici.
-# INDICE 3 (formule)    : Y_i = e^{-rT} (K - S_T^i)^+ 1{min_t S_t^i <= H},
-#     X_i = e^{-rT} (K - S_T^i)^+, EX = put_bs(S0, K, sigma, r, T).
-#
-# PIÈGE : np.max / np.min renvoient un SCALAIRE (le max de tout le tableau).
-#         Le max terme à terme, c'est np.maximum ; le min par chemin, c'est
-#         .min(axis=1). Les deux erreurs passent silencieusement et donnent un
-#         vecteur de la mauvaise forme (ou constant).
-# PIÈGE : actualisation. EX = put_bs est DÉJÀ un prix actualisé. Si tu renvoies
-#         X non actualisé, X̄ et EX ne vivent pas dans la même unité et le
-#         contrôle décale le prix au lieu de le stabiliser.
-# PIÈGE : paths[:, 0] est un ARRAY (déjà rencontré dans test_gbm_paths_shape_et_depart).
-#         Le spot scalaire, c'est paths[0, 0].
 def di_put_payoffs(paths: np.ndarray,
                    K: float,
                    H: float,
                    r: float,
                    T: float) -> tuple[np.ndarray, np.ndarray]:
-    """Payoffs actualisés PAR CHEMIN du DI put et de son contrôle vanille.
+    """Per-path discounted payoffs of the DI put and of its vanilla control.
 
-    Rien n'est moyenné ici : cette fonction ne price pas, elle fabrique les deux
-    échantillons appariés que control_variate attend.
+    Nothing is averaged here: this function does not price, it builds the two
+    paired samples that `mc_engine.control_variate` expects.
 
     Params
     ------
-    paths : (N, n_steps+1) trajectoires GBM, S0 en colonne 0.
-    K, H, r, T : strike, barrière, taux, maturité.
+    paths : (N, n_steps+1) simulated paths, S0 in column 0.
+    K, H, r, T : strike, barrier, rate, maturity.
 
     Returns
     -------
-    (Y, X) : deux arrays de shape (N,), tous deux ACTUALISÉS.
-        Y = payoff down-and-in put du chemin.
-        X = payoff put vanille du MÊME chemin, même K, même T.
+    (Y, X) : two (N,) arrays, both DISCOUNTED.
+        Y = down-and-in put payoff of the path.
+        X = vanilla put payoff of the SAME path, same K, same T.
 
-    Garanties attendues
-    -------------------
-    * Y.mean() == di_put(paths, K, H, r, T)[0] à la précision machine.
-    * X.mean() == van_put(paths, K, r, T)[0] à la précision machine.
-      (Si l'une des deux casse, c'est la cohérence d'actualisation ou la forme
-      du vecteur qui est en cause, pas le hasard.)
+    Notes
+    -----
+    Y and X must live in the same units as the control's expectation EX, which
+    is a discounted price. Returning them undiscounted shifts the estimate
+    instead of stabilising it.
+
+    Y.mean() equals di_put(paths, K, H, r, T)[0] to machine precision, and
+    X.mean() equals van_put(paths, K, r, T)[0].
     """
-    
-    ST = paths[:, -1]   
+
+    ST = paths[:, -1]
     min_paths = paths.min(axis=1)
-    # payoff vaut ca pour le VAN put X = np.maximum(K - ST, 0.0)
 
     X = np.maximum(K - ST, 0.0)*np.exp(-r*T)
-    
-    # payoff vaut ca pour le DI put Y = (K − S_T)⁺ · 1{ min₀≤t≤T S_t ≤ H }
-    
+
     Y = np.where(min_paths < H, np.maximum(K - ST, 0.0), 0.0)*np.exp(-r*T)
-    
+
     return (Y,X)
-    
+
 
 def di_put_cv(paths: np.ndarray,
               K: float,
@@ -135,23 +134,30 @@ def di_put_cv(paths: np.ndarray,
               T: float,
               sigma: float,
               c: float | None = None) -> tuple[float, float, float, float]:
-    """DI put pricé par variable de contrôle (contrôle = put vanille).
+    """DI put priced with the vanilla put as control variate, under Black-Scholes.
+
+    The control's expectation is taken from the closed-form BS put, so this
+    helper is tied to the Black-Scholes model. Pricing a DI put on Heston paths
+    means calling `di_put_payoffs` and `mc_engine.control_variate` directly with
+    a Heston EX, as scripts/boss3_heston_barrier.py does.
 
     Params
     ------
-    paths : (N, n_steps+1) trajectoires GBM, S0 en colonne 0.
-    K, H, r, T : strike, barrière, taux, maturité.
-    sigma : volatilité utilisée pour SIMULER paths — elle sert à calculer
-        l'espérance exacte du contrôle. Une incohérence entre ce sigma et celui
-        des trajectoires biaise le prix : ce n'est plus une réduction de variance,
-        c'est une erreur de modèle.
-    c : coefficient imposé (typiquement issu de pilot_c), ou None pour l'estimer.
+    paths : (N, n_steps+1) simulated paths, S0 in column 0. The spot is read
+        back from paths[0, 0].
+    K, H, r, T : strike, barrier, rate, maturity.
+    sigma : volatility used to SIMULATE paths, needed for the control's exact
+        expectation. A mismatch between this sigma and the one behind the paths
+        biases the price: that is a model error, not variance reduction.
+    c : imposed coefficient, typically from `mc_engine.pilot_c`, or None to
+        estimate it in-sample.
 
     Returns
     -------
-    (estimate, half_width, c_hat, rho_hat), même convention que control_variate.
-        estimate doit être compatible avec di_put(paths, ...)[0] à l'IC près,
-        avec une demi-largeur strictement plus petite dès que |rho_hat| est élevé.
+    (estimate, half_width, c_hat, rho_hat), same convention as
+    `mc_engine.control_variate`. Run on the same paths as di_put, the gap
+    between the two estimates is exactly c*(X_bar - EX), of the order of the
+    control's own CI; a larger gap means the control is not centred.
     """
     Y,X= di_put_payoffs(paths,K,H,r,T)
     EX = bs.put_bs(paths[0, 0],K,sigma,r,T,q=0.0)

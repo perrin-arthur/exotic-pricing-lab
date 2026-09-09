@@ -1,3 +1,13 @@
+"""Closed-form Black-Scholes, Monte-Carlo pricers, paths, implied vol, barriers.
+
+Each test validates against an independent reference: a closed-form price, a
+model-free identity, or a pathwise identity. Tolerances follow the nature of the
+comparison -- a confidence interval for Monte-Carlo, machine precision for
+algebra.
+
+Run: .venv/bin/python -m pytest tests/test_pricers.py -v
+"""
+
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
@@ -9,7 +19,7 @@ from bs import call_bs, put_bs, vega
 from mc_engine import gbm_paths, pricer_mc_call, delta_mc
 
 PARAMS = dict(S0=100, K=100, sigma=0.2, r=0.05, T=1)
-# gbm_paths ne prend pas de strike : dict separe, sinon TypeError sur K.
+# gbm_paths takes no strike, hence a separate dict.
 PATH_PARAMS = dict(S0=100, sigma=0.2, r=0.05, T=1)
 
 def test_bs_reference_value():
@@ -18,10 +28,10 @@ def test_bs_reference_value():
 def test_call_bs_dividende():
     """C(S0, K, sigma, r, T, q) == C(S0*exp(-qT), K, sigma, r, T, 0).
 
-    Un call sur sous-jacent a dividende continu EST un call sans dividende
-    sur le spot escompte : ln(S0/K) + (r-q)T = ln(S0*exp(-qT)/K) + rT.
-    Contrairement a la parite put-call (vraie par construction puisque put_bs
-    est DEFINIE par la parite), cette identite casse si le -q manque dans d1.
+    A call on an underlying paying a continuous dividend IS a dividend-free call
+    on the discounted spot: ln(S0/K) + (r-q)T = ln(S0*exp(-qT)/K) + rT.
+    Unlike call-put parity, which holds by construction since put_bs is DEFINED
+    by it, this identity breaks if the -q is missing from d1.
     """
     q, T = 0.03, 1.0
     lhs = call_bs(100, 100, 0.2, 0.05, T, q)
@@ -31,13 +41,13 @@ def test_call_bs_dividende():
 def test_put_call_parity_bs():
     lhs = call_bs(**PARAMS) - put_bs(**PARAMS)
     rhs = 100 - 100*np.exp(-0.05)
-    assert abs(lhs - rhs) < 1e-10        # analytique : précision machine
+    assert abs(lhs - rhs) < 1e-10        # analytical: machine precision
 
 def test_mc_within_ci():
-    # rng explicite : le determinisme est une decision du TEST, pas une
-    # propriete du pricer (dont le defaut est une entropie fraiche).
+    # Explicit rng: determinism is a decision of the test, not a property of the
+    # pricer, whose default is fresh entropy.
     price, ci = pricer_mc_call(**PARAMS, N=100_000, rng=np.random.default_rng(42))
-    assert abs(price - call_bs(**PARAMS)) < ci * 1.5   # marge sur l'IC
+    assert abs(price - call_bs(**PARAMS)) < ci * 1.5   # margin on the CI
 
 def test_delta_crn():
     d = delta_mc(**PARAMS, h=0.1, N=100_000, seed=42)
@@ -48,14 +58,15 @@ def test_delta_crn():
 def test_gbm_paths_shape_et_depart():
     paths = gbm_paths(**PATH_PARAMS, n_steps=50, N=10_000,
                       rng=np.random.default_rng(42))
-    assert paths.shape == (10_000, 51)          # n_steps+1 colonnes
-    # paths[:, 0] est un ARRAY de 10 000 valeurs -> np.all obligatoire, sinon
-    # "truth value of an array is ambiguous". Egalite EXACTE : c'est la colonne
-    # de zeros du cumsum qui la garantit, pas un arrondi favorable.
+    assert paths.shape == (10_000, 51)          # n_steps+1 columns
+    # paths[:, 0] is an ARRAY of 10 000 values, so np.all is required, otherwise
+    # "truth value of an array is ambiguous". The equality is EXACT: it is
+    # guaranteed by the leading zero column of the cumulative sum, not by a
+    # favourable rounding.
     assert np.all(paths[:, 0] == PATH_PARAMS["S0"])
 
 def test_gbm_paths_call_europeen():
-    """Le payoff sur paths[:, -1] doit retrouver le prix BS fermé."""
+    """The payoff on paths[:, -1] must recover the closed-form BS price."""
     N = 50_000
     paths = gbm_paths(**PATH_PARAMS, n_steps=50, N=N,
                       rng=np.random.default_rng(42))
@@ -73,7 +84,7 @@ def test_gbm_paths_loi_independante_de_n_steps():
         disc = np.exp(-0.05) * np.maximum(paths[:, -1] - 100, 0.0)
         prices.append(disc.mean())
         cis.append(1.96 * disc.std(ddof=1) / np.sqrt(N))
-    # tirages independants -> les IC s'ajoutent en quadrature
+    # independent draws -> the CIs add in quadrature
     ci_comb = np.hypot(*cis)
     assert abs(prices[0] - prices[1]) < ci_comb * 1.5
 
@@ -97,15 +108,15 @@ def test_implied_vol_call():
 
 
 def test_di_do_van():
-    """DI + DO = put vanille, sur les MEMES trajectoires.
+    """DI + DO = vanilla put, on the SAME paths.
 
-    Identite pathwise : 1{min<H} + 1{min>=H} = 1 sur chaque chemin, donc le
-    bruit MC est rigoureusement identique des deux cotes et s'annule dans la
-    soustraction. Tolerance 1e-12 (arrondi flottant), PAS un IC.
-    Vraie pour tout H : ce n'est pas une propriete du niveau de barriere.
+    Pathwise identity: 1{min<H} + 1{min>=H} = 1 on every path, so the
+    Monte-Carlo noise is rigorously identical on both sides and cancels in the
+    subtraction. Tolerance 1e-12 (floating-point rounding), NOT a confidence
+    interval. True for any H: this is not a property of the barrier level.
     """
-    # rng explicite : sans lui, l'assert de NIVEAU ci-dessous (2.94 sigma)
-    # echouerait ~1 run sur 300 sans qu'aucun code n'ait change.
+    # Explicit rng: without it the LEVEL assertion below (2.94 sigma) would fail
+    # about one run in 300 with no code having changed.
     paths = gbm_paths(**PATH_PARAMS, n_steps=50, N=100_000,
                       rng=np.random.default_rng(42))
     put = put_bs(**PARAMS)
@@ -118,6 +129,6 @@ def test_di_do_van():
               f"DI/vanille={di/put_mc:6.1%}  ecart parite={abs(di+do-put_mc):.2e}")
         assert abs(di + do - put_mc) < 1e-12
 
-    # niveau : MC contre analytique -> tolerance = l'IC. Hors de la boucle,
-    # elle ne depend pas de H.
+    # Level: Monte-Carlo against analytics -> the tolerance is the CI. Outside
+    # the loop, since it does not depend on H.
     assert abs(put_mc - put) < ci_van * 1.5

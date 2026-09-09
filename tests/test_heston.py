@@ -1,15 +1,10 @@
-"""ACTE III — Heston mono-actif. Tests ecrits AVANT le code.
+"""Single-asset Heston: paths, characteristic function, prices, smile.
 
-Meme mecanique que l'Acte II : tout est en @pytest.mark.xfail(strict=True).
-Tant que la fonction leve NotImplementedError -> XFAIL. Des que ton code est
-juste -> XPASS, la suite passe au rouge, et c'est TON signal pour retirer le
-marqueur.
+Everything tested here is independent of the implementation: martingale
+identities, exact CIR moments, the degenerate limit towards Black-Scholes, and
+call-put parity. No test compares Heston against Heston.
 
-Lance : .venv/bin/python -m pytest tests/test_heston.py -v
-
-Ce qui est teste ici est choisi pour etre INDEPENDANT de ton implementation :
-identites de martingale, moments exacts du CIR, limite degeneree vers
-Black-Scholes, parite call-put. Aucun test ne compare Heston a Heston.
+Run: .venv/bin/python -m pytest tests/test_heston.py -v
 """
 
 import sys, pathlib
@@ -23,31 +18,31 @@ from bs import call_bs
 from heston import (heston_call, heston_cf, heston_paths, heston_put,
                     heston_smile)
 
-# Jeu de parametres de reference de l'acte. Feller : 2*kappa*theta = 0.12 > 0.09
-# = xi^2, donc la variance ne colle pas a zero — les tests ne mesurent pas le
-# comportement pathologique, ils mesurent le cas sain.
+# Reference parameter set. Feller holds: 2*kappa*theta = 0.12 > 0.09 = xi^2, so
+# the variance does not stick at zero -- these tests measure the healthy regime,
+# not the pathological one.
 HP = dict(S0=100.0, v0=0.04, r=0.05, T=1.0,
           kappa=1.5, theta=0.04, xi=0.3, rho=-0.7)
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _half_width(v):
-    """Demi-largeur IC 95% — la convention du repo."""
+    """95% CI half-width -- the library convention."""
     return 1.96 * v.std(ddof=1) / np.sqrt(len(v))
 
 
 # ---------------------------------------------------------------------------
-# QUETE 3.1 — trajectoires                                            [40 XP]
+# Paths
 # ---------------------------------------------------------------------------
 
 
 def test_heston_paths_shape_et_depart():
-    """Contrat de base : formes, points de depart exacts, variance positive.
+    """Base contract: shapes, exact starting points, non-negative variance.
 
-    Le v >= 0 n'est pas cosmetique : une seule valeur negative sous une racine
-    produit un nan qui contamine toute la trajectoire, et un nan dans un
-    payoff donne un prix nan — bruyant. Le vrai danger est le nan qui
-    disparait dans un np.maximum(..., 0) et rend un prix silencieusement faux.
+    The v >= 0 check is not cosmetic: a single negative value under a square
+    root produces a nan that contaminates the whole path, and a nan in a payoff
+    gives a nan price, which is loud. The real danger is the nan that vanishes
+    inside a np.maximum(..., 0) and returns a silently wrong price.
     """
     n_steps, N = 50, 5_000
     S, v = heston_paths(**HP, n_steps=n_steps, N=N,
@@ -58,28 +53,27 @@ def test_heston_paths_shape_et_depart():
     assert np.all(v[:, 0] == HP["v0"])
     assert np.all(v >= 0.0)
     assert np.all(np.isfinite(S)) and np.all(np.isfinite(v))
-    assert np.all(S > 0.0)          # log-schema : positivite exacte
+    assert np.all(S > 0.0)          # log scheme: exact positivity
 
 
 
 def test_heston_paths_degenere_black_scholes():
-    """xi = 0 et v0 = theta : Heston N'EST PLUS Heston, c'est Black-Scholes.
+    """xi = 0 with v0 = theta: Heston is no longer Heston, it is Black-Scholes.
 
-    Le boss de tutoriel de l'acte, meme role que la quete 2.2. Sans vol-of-vol
-    et demarre a sa moyenne, la variance ne bouge plus : v_t = theta pour tout
-    t, exactement (le drift kappa*(theta - theta) est nul, la diffusion aussi).
-    Le spot est alors un GBM de vol sqrt(theta), et le prix MC doit retomber
-    sur la formule fermee de l'Acte I.
+    Without vol-of-vol and started at its long-run mean, the variance stops
+    moving: v_t = theta for all t, exactly, since the drift kappa*(theta-theta)
+    and the diffusion both vanish. The spot is then a GBM of volatility
+    sqrt(theta), and the Monte-Carlo price must land on the closed form.
 
-    Si ce test echoue, inutile de regarder le reste : le squelette du schema
-    est faux.
+    If this fails, there is no point looking further: the skeleton of the scheme
+    is wrong.
     """
     params = dict(HP, xi=0.0, v0=HP["theta"])
     N = 100_000
     S, v = heston_paths(**params, n_steps=100, N=N,
                         rng=np.random.default_rng(2))
 
-    assert np.max(np.abs(v - HP["theta"])) < 1e-12      # variance figee
+    assert np.max(np.abs(v - HP["theta"])) < 1e-12      # variance frozen
 
     K = 100.0
     disc = np.exp(-HP["r"]*HP["T"]) * np.maximum(S[:, -1] - K, 0.0)
@@ -89,14 +83,12 @@ def test_heston_paths_degenere_black_scholes():
 
 
 def test_heston_paths_martingale():
-    """E[e^{-rT} S_T] = S0. Identite MODEL-FREE : elle ne suppose rien sur la
-    dynamique de la variance, seulement que le drift du spot est r sous la
-    probabilite risque-neutre.
+    """E[e^{-rT} S_T] = S0, a model-free identity.
 
-    C'est le test le plus rentable de l'acte : il attrape un drift oublie, un
-    -0.5*v_t manquant, un dt qui n'est pas T/n_steps, une correlation appliquee
-    du mauvais cote. Aucune de ces erreurs ne se voit sur un graphe de
-    trajectoires.
+    It assumes nothing about the variance dynamics, only that the spot drifts at
+    r under the risk-neutral measure. It catches a missing drift, a missing
+    -0.5*v_t, a dt that is not T/n_steps, and a correlation applied on the wrong
+    side -- none of which show up on a plot of the paths.
     """
     N = 200_000
     S, _ = heston_paths(**HP, n_steps=250, N=N, rng=np.random.default_rng(3))
@@ -107,18 +99,17 @@ def test_heston_paths_martingale():
 
 
 def test_heston_paths_moyenne_de_la_variance():
-    """E[v_T] = theta + (v0 - theta)*exp(-kappa*T), moyenne exacte du CIR.
+    """E[v_T] = theta + (v0 - theta)*exp(-kappa*T), the exact CIR mean.
 
-    On demarre DELIBEREMENT hors de la moyenne de long terme (v0 = 0.09 pour
-    theta = 0.04) : si tu partais a v0 = theta, la moyenne serait constante et
-    le test passerait meme avec un kappa faux. Ici le test pince a la fois
-    kappa, theta et le pas de temps.
+    The starting point is deliberately away from the long-run mean (v0 = 0.09
+    for theta = 0.04): starting at v0 = theta would make the mean constant and
+    the test would pass even with a wrong kappa. Here it pins kappa, theta and
+    the time step at once.
 
-    Tolerance 3% relative et non un IC : le schema d'Euler avec troncature
-    introduit un biais de discretisation (la troncature ne peut que remonter la
-    variance), qui ne disparait pas quand N grandit. C'est une tolerance de
-    SCHEMA, pas de statistique — et c'est exactement la nuance a savoir
-    expliquer.
+    Tolerance is 3% relative rather than a CI: the Euler scheme with truncation
+    carries a discretisation bias -- truncation can only push the variance up --
+    which does not shrink as N grows. This is a tolerance on the SCHEME, not on
+    the statistics.
     """
     params = dict(HP, v0=0.09)
     N = 100_000
@@ -134,16 +125,15 @@ def test_heston_paths_moyenne_de_la_variance():
 
 
 def test_heston_paths_correlation_du_premier_pas():
-    """rho doit se lire dans les donnees, pas seulement dans la signature.
+    """rho must be readable in the data, not only in the signature.
 
-    Au premier pas, v vaut v0 > 0 partout : aucune troncature n'a encore eu
-    lieu, donc les deux increments sont EXACTEMENT gaussiens et on peut
-    remonter aux deux tirages normalises. Leur correlation empirique est rho.
+    At the first step v equals v0 > 0 everywhere, so no truncation has occurred
+    yet, both increments are exactly gaussian, and the two normalised draws can
+    be recovered. Their empirical correlation is rho.
 
-    Ce test pince trois choses d'un coup : le Cholesky (rho au bon endroit),
-    l'ordre des deux gaussiennes (inverser Z1 et Z2 change rho en rho aussi,
-    mais melanger W_S et W_v casse le signe du skew), et le fait que le pas du
-    spot lit v_t et non v_{t+dt}.
+    This pins three things at once: the Cholesky factorisation with rho in the
+    right place, the ordering of the two gaussians, and the fact that the spot
+    step reads v_t rather than v_{t+dt}.
     """
     n_steps, N = 20, 200_000
     S, v = heston_paths(**HP, n_steps=n_steps, N=N,
@@ -158,23 +148,22 @@ def test_heston_paths_correlation_du_premier_pas():
     rho_hat = float(np.corrcoef(Z_S, Z_v)[0, 1])
     print(f"rho impose={HP['rho']}  rho mesure={rho_hat:.4f}")
 
-    assert abs(Z_v.std(ddof=1) - 1.0) < 0.02      # bien normalise
+    assert abs(Z_v.std(ddof=1) - 1.0) < 0.02      # correctly normalised
     assert abs(Z_S.std(ddof=1) - 1.0) < 0.02
     assert abs(rho_hat - HP["rho"]) < 0.01
 
 
 # ---------------------------------------------------------------------------
-# QUETE 3.2 — semi-analytique                                         [50 XP]
+# Characteristic function and semi-analytical prices
 # ---------------------------------------------------------------------------
 
 
 def test_heston_cf_proprietes_de_fonction_caracteristique():
-    """Trois identites que TOUTE fonction caracteristique verifie.
+    """Three identities satisfied by ANY characteristic function.
 
-    Elles ne dependent ni de Heston ni de tes parametres : ce sont les
-    proprietes de E[exp(i*u*X)] pour X reelle. Elles coutent trois lignes et
-    attrapent la moitie des fautes de recopie de la formule — un signe inverse
-    quelque part fait presque toujours sauter |phi| <= 1.
+    They depend neither on Heston nor on the parameters: they are properties of
+    E[exp(i*u*X)] for real X. They cost three lines and catch half of the
+    transcription errors -- an inverted sign almost always breaks |phi| <= 1.
     """
     phi0 = heston_cf(0.0, **HP)
     assert abs(phi0 - 1.0) < 1e-12
@@ -190,24 +179,22 @@ def test_heston_cf_proprietes_de_fonction_caracteristique():
 
 
 def test_heston_cf_limite_gaussienne():
-    """xi -> 0 avec v0 = theta : log S_T est gaussienne, on connait sa cf.
+    """xi -> 0 with v0 = theta: log S_T is gaussian and its cf is known.
 
-    m = log S0 + (r - theta/2)*T, variance = theta*T, donc
+    m = log S0 + (r - theta/2)*T, variance = theta*T, hence
     phi(u) = exp(i*u*m - u^2*theta*T/2).
 
-    Pourquoi xi = 1e-3 et pas 0 : la formule fait apparaitre xi^2 au
-    denominateur. A xi = 0 c'est une division par zero, et a xi = 1e-7 c'est
-    une soustraction de deux nombres presque egaux multipliee par 1/xi^2 —
-    l'annulation catastrophique te rend du bruit (mesure : l'erreur descend
-    jusqu'a xi ~ 1e-5 puis REMONTE). Savoir a quelle distance de la
-    singularite on peut encore tester est un reflexe de calcul numerique.
+    Why xi = 1e-3 rather than 0: the formula has xi^2 in a denominator. At
+    xi = 0 that is a division by zero, and at xi = 1e-7 it is a difference of
+    two nearly equal numbers multiplied by 1/xi^2 -- catastrophic cancellation
+    returns noise. Measured, the error decreases down to xi ~ 1e-5 and then
+    RISES again.
 
-    Et on ne teste pas une tolerance seule, on teste une VITESSE de
-    convergence : l'ecart a la gaussienne est en O(xi) — terme de skew en
-    rho*xi*u^3, d'ordre UN parce que c'est la correlation qui brise la
-    symetrie. Diviser xi par 10 doit donc diviser l'ecart par 10. Un facteur
-    d'echelle est bien plus discriminant qu'un seuil : une formule fausse rate
-    la pente, pas seulement le niveau.
+    What is tested is not a tolerance but a RATE of convergence: the departure
+    from the gaussian is O(xi), the skew term rho*xi*u^3 being first order
+    because it is the correlation that breaks the symmetry. Dividing xi by ten
+    must divide the error by ten. A scale factor is far more discriminating than
+    a threshold: a wrong formula misses the slope, not just the level.
     """
     u = np.array([0.5, 1.0, 2.0, 5.0])
     m = np.log(HP["S0"]) + (HP["r"] - 0.5*HP["theta"])*HP["T"]
@@ -222,20 +209,19 @@ def test_heston_cf_limite_gaussienne():
     print(f"ecart(xi=1e-3)={e3:.3e}  ecart(xi=1e-4)={e4:.3e}  ratio={e3/e4:.2f}")
 
     assert e3 < 1e-3
-    assert 8.0 < e3/e4 < 12.0          # convergence lineaire en xi
+    assert 8.0 < e3/e4 < 12.0          # linear convergence in xi
 
 
 
 def test_heston_call_limite_black_scholes():
-    """xi -> 0, v0 = theta : le prix Heston redonne le prix BS.
+    """xi -> 0 with v0 = theta: the Heston price returns the BS price.
 
-    Tolerance 1e-3 et non 1e-10 : la limite est en O(xi) — le terme de skew
-    rho*xi*u^3 est d'ordre UN, cf. test_heston_cf_limite_gaussienne. On ne
-    teste donc pas une identite mais une convergence, et on prend xi = 1e-4
-    pour que l'ecart de modele passe sous la tolerance sans descendre dans la
-    zone d'annulation catastrophique (en dessous de xi ~ 1e-5). Ne cherche pas
-    a resserrer — une VRAIE erreur de formule (coupure de branche, signe,
-    borne d'integration trop courte) se voit a 0.1 ou plus, jamais a 1e-3.
+    Tolerance 1e-3 rather than 1e-10: the limit is O(xi), the skew term
+    rho*xi*u^3 being first order. This tests a convergence, not an identity, and
+    xi = 1e-4 keeps the model error under the tolerance without dropping into
+    the cancellation zone below xi ~ 1e-5. A genuine formula error -- branch
+    cut, sign, truncated integration range -- shows up at 0.1 or more, never at
+    1e-3.
     """
     params = dict(HP, xi=1e-4, v0=HP["theta"])
     for K in (80.0, 100.0, 120.0):
@@ -246,11 +232,11 @@ def test_heston_call_limite_black_scholes():
 
 
 def test_heston_call_bornes_et_monotonie():
-    """Bornes model-free et decroissance en K.
+    """Model-free bounds and decrease in K.
 
-    max(S0 - K*exp(-rT), 0) <= C <= S0 : violer ces bornes, c'est offrir un
-    arbitrage. Une borne inferieure violee est le symptome typique d'une borne
-    d'integration trop courte (l'integrale tronquee sous-estime P1).
+    max(S0 - K*exp(-rT), 0) <= C <= S0: violating these offers an arbitrage. A
+    violated lower bound is the typical symptom of a truncated integration range
+    under-estimating P1.
     """
     strikes = np.array([70.0, 85.0, 100.0, 115.0, 130.0])
     prix = np.array([heston_call(K=float(K), **HP) for K in strikes])
@@ -264,12 +250,12 @@ def test_heston_call_bornes_et_monotonie():
 
 
 def test_heston_call_accord_avec_le_monte_carlo():
-    """Les deux routes doivent se rejoindre : semi-analytique dans l'IC du MC.
+    """The two routes must meet: semi-analytical price within the MC interval.
 
-    C'est LA validation croisee de l'acte : deux calculs qui ne partagent
-    aucune ligne de code (une quadrature contre un schema d'Euler) et qui
-    doivent donner le meme nombre. Un ecart systematique du meme signe sur les
-    trois strikes signale un biais de discretisation, pas du bruit.
+    This is the cross-validation of the module: two computations sharing no line
+    of code -- a quadrature against an Euler scheme -- returning the same number.
+    A systematic gap of the same sign across the three strikes signals a
+    discretisation bias rather than noise.
     """
     N = 200_000
     S, _ = heston_paths(**HP, n_steps=250, N=N, rng=np.random.default_rng(6))
@@ -284,12 +270,11 @@ def test_heston_call_accord_avec_le_monte_carlo():
 
 
 def test_heston_put_parite_call_put():
-    """C - P = S0 - K*exp(-rT), a 1e-10.
+    """C - P = S0 - K*exp(-rT), to 1e-10.
 
-    La parite est MODEL-FREE : elle ne depend d'aucune hypothese de dynamique,
-    seulement de l'absence d'arbitrage. Donc pas d'argument statistique, pas de
-    tolerance genereuse — c'est de l'algebre, comme la parite DI+DO de la
-    quete 1.7.
+    Parity is model-free: it assumes no dynamics, only no-arbitrage. So no
+    statistical argument and no generous tolerance -- this is algebra, like the
+    DI + DO = vanilla identity in test_pricers.py.
     """
     for K in (80.0, 100.0, 125.0):
         c = heston_call(K=K, **HP)
@@ -299,16 +284,16 @@ def test_heston_put_parite_call_put():
 
 
 # ---------------------------------------------------------------------------
-# QUETE 3.3 — le smile                                                [40 XP]
+# Implied volatility smile
 # ---------------------------------------------------------------------------
 
 
 def test_smile_plat_quand_xi_tend_vers_zero():
-    """Sans vol-of-vol, pas de smile : la surface est plate a sqrt(theta).
+    """No vol-of-vol, no smile: the surface is flat at sqrt(theta).
 
-    C'est le meme boss degenere, vu depuis les vols implicites. Il verrouille
-    au passage le branchement sur implied_vol_call : si tu inverses un put avec
-    un solveur de call, ce test explose immediatement.
+    The same degenerate limit seen from implied volatilities. It also locks down
+    the wiring into implied_vol_call: inverting a put with a call solver blows
+    this up immediately.
     """
     params = dict(HP, xi=1e-3, v0=HP["theta"])
     strikes = np.linspace(80.0, 120.0, 9)
@@ -320,46 +305,45 @@ def test_smile_plat_quand_xi_tend_vers_zero():
 
 
 def test_smile_skew_negatif_quand_rho_negatif():
-    """rho < 0 -> les puts OTM cotent plus cher -> vol implicite decroissante.
+    """rho < 0 -> OTM puts quote richer -> implied volatility decreasing in K.
 
-    C'est LE fait de marche que Black-Scholes ne peut pas reproduire, et la
-    raison economique pour laquelle les produits structures existent : quelqu'un
-    veut acheter de la protection a la baisse, quelqu'un doit la vendre.
-    L'effet de levier (rho < 0) est le mecanisme du modele qui le produit.
+    This is the market fact Black-Scholes cannot reproduce, and the economic
+    reason structured products exist: someone wants to buy downside protection,
+    someone has to sell it. Leverage (rho < 0) is the mechanism producing it.
     """
     strikes = np.linspace(80.0, 120.0, 9)
     iv = heston_smile(strikes=strikes, **HP)          # rho = -0.7
 
     print("skew :", np.round(iv, 4))
-    assert np.all(np.diff(iv) < 0.0)                  # strictement decroissante
-    assert iv[0] - iv[-1] > 0.01                      # pente economiquement lisible
+    assert np.all(np.diff(iv) < 0.0)                  # strictly decreasing
+    assert iv[0] - iv[-1] > 0.01                      # economically readable slope
 
 
 
 def test_smile_symetrique_et_convexe_quand_rho_nul():
-    """rho = 0 : plus de pente, mais toujours de la courbure.
+    """rho = 0: no slope left, but still curvature.
 
-    La dissociation est le point a retenir : rho fait la PENTE, xi fait la
-    COURBURE. A rho = 0 le smile est symetrique en log-moneyness et la monnaie
-    est son minimum — un vrai "smile", pas un "skew".
+    The dissociation is the point: rho makes the SLOPE, xi makes the CURVATURE.
+    At rho = 0 the smile is symmetric in log-moneyness and the money is its
+    minimum -- a genuine smile, not a skew.
     """
     params = dict(HP, rho=0.0)
-    F = HP["S0"]*np.exp(HP["r"]*HP["T"])              # forward, pas le spot
+    F = HP["S0"]*np.exp(HP["r"]*HP["T"])              # forward, not the spot
     k = np.array([-0.2, -0.1, 0.0, 0.1, 0.2])
     strikes = F*np.exp(k)
     iv = heston_smile(strikes=strikes, **params)
 
-    assert abs(iv[0] - iv[-1]) < 5e-3                 # symetrie
+    assert abs(iv[0] - iv[-1]) < 5e-3                 # symmetry
     assert abs(iv[1] - iv[3]) < 5e-3
-    assert iv[2] < iv[1] and iv[2] < iv[3]            # convexite
+    assert iv[2] < iv[1] and iv[2] < iv[3]            # convexity
 
 
 
 def test_smile_courbure_croissante_en_xi():
-    """Doubler la vol-of-vol creuse le smile.
+    """Doubling the vol-of-vol deepens the smile.
 
-    On mesure la courbure par une difference seconde en log-moneyness, a rho
-    nul pour isoler l'effet de xi de celui de la pente.
+    Curvature is measured by a second difference in log-moneyness, at rho = 0 to
+    isolate the effect of xi from that of the slope.
     """
     F = HP["S0"]*np.exp(HP["r"]*HP["T"])
     strikes = F*np.exp(np.array([-0.15, 0.0, 0.15]))
@@ -376,20 +360,19 @@ def test_smile_courbure_croissante_en_xi():
 
 
 # ---------------------------------------------------------------------------
-# BOSS 3 — DI put sous Heston, avec variable de controle                [80 XP]
+# Heston barrier sweep artefacts
 # ---------------------------------------------------------------------------
 
 def test_boss3_artefacts():
-    """Le boss se valide sur ses artefacts, comme le BOSS 2.
+    """Checks the artefacts produced by scripts/boss3_heston_barrier.py.
 
-    Lance : .venv/bin/python scripts/boss3_heston_barrier.py
+    Run: .venv/bin/python scripts/boss3_heston_barrier.py
 
-    L'idee : reprendre EXACTEMENT le dispositif du BOSS 2 (DI put, variable de
-    controle = put vanille) mais sous Heston. La seule chose qui change est
-    l'origine de EX : ce n'est plus put_bs, c'est heston_put — ton prix
-    semi-analytique de la quete 3.2. Tout l'Acte II se rebranche sans une ligne
-    de modification, et c'est precisement ce qu'on veut montrer : la reduction
-    de variance est independante du modele.
+    The setup is the one of the Black-Scholes sweep -- DI put, vanilla put as
+    control -- transposed under Heston. The only thing that changes is where EX
+    comes from: heston_put instead of put_bs. The variance reduction machinery
+    is reused unmodified, which is the point: it is a statistical technique,
+    independent of the model.
     """
     fig = ROOT / "figures" / "boss3_heston.png"
     res = ROOT / "figures" / "boss3_results.json"
@@ -402,7 +385,7 @@ def test_boss3_artefacts():
     assert len(smile) >= 7
     iv = [p["iv"] for p in smile]
     assert all(0.05 < x < 1.0 for x in iv)
-    assert iv[0] > iv[-1]                    # skew negatif, rho < 0
+    assert iv[0] > iv[-1]                    # negative skew, rho < 0
 
     sweep = data["sweep"]
     assert len(sweep) >= 6

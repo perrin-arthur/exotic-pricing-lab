@@ -1,17 +1,11 @@
-"""ACTE II — reduction de variance. Tests ecrits AVANT le code.
+"""Variance reduction: control variates, antithetic variates, pilot coefficient.
 
-MECANIQUE DU JEU
-----------------
-Tous les tests sont marques @pytest.mark.xfail(strict=True) :
-  * tant que la fonction leve NotImplementedError -> XFAIL (attendu, suite verte)
-  * des que ton implementation est correcte -> XPASS -> et strict=True fait
-    ECHOUER la suite.
-Cet echec est le signal de victoire : tu retires le marqueur xfail de CE test,
-et la quete est validee. Retirer un marqueur sans avoir implemente = tricher
-contre toi-meme, le test passera au rouge franc.
+Every test validates against an independent reference: a closed-form price, an
+exactly known moment, or an algebraic identity. Tolerances are chosen
+accordingly -- a confidence interval where the comparison is statistical, 1e-12
+where it is algebraic.
 
-Lance : .venv/bin/python -m pytest tests/test_variance_reduction.py -v
-Etat initial attendu : que des xfailed, zero passed, zero xpassed.
+Run: .venv/bin/python -m pytest tests/test_variance_reduction.py -v
 """
 
 import sys, pathlib
@@ -33,11 +27,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _echantillon_correle(n, rng):
-    """(Y, X, EX, EY) synthetiques : aucune finance, moments connus EXACTEMENT.
+    """Synthetic (Y, X, EX, EY) with no finance in it and exactly known moments.
 
     X = 1 + Z1                      -> E[X] = 1
     Y = 3 + 2*Z1 + 0.5*Z2           -> E[Y] = 3, Cov(Y,X) = 2, Var(X) = 1
-    donc c* = 2 et rho* = 2/sqrt(4.25) = 0.97014...
+    hence c* = 2 and rho* = 2/sqrt(4.25) = 0.97014...
     """
     Z1 = rng.standard_normal(n)
     Z2 = rng.standard_normal(n)
@@ -45,18 +39,18 @@ def _echantillon_correle(n, rng):
 
 
 def _half_width(v):
-    """Demi-largeur IC 95% d'un echantillon i.i.d. — la convention du repo."""
+    """95% CI half-width of an i.i.d. sample -- the library convention."""
     return 1.96 * v.std(ddof=1) / np.sqrt(len(v))
 
 
 # ---------------------------------------------------------------------------
-# QUETE 2.1 — control_variate                                          [30 XP]
+# control_variate
 # ---------------------------------------------------------------------------
 
 
 def test_cv_unbiased():
-    """L'estimateur tombe dans son PROPRE IC autour de la vraie valeur E[Y]=3,
-    et sa demi-largeur est strictement plus petite que celle du MC brut."""
+    """The estimate falls within its own CI around the true E[Y] = 3, and its
+    half-width is strictly smaller than that of the raw Monte-Carlo."""
     n = 20_000
     Y, X, EX, EY = _echantillon_correle(n, np.random.default_rng(42))
     est, hw, c_hat, rho_hat = control_variate(Y, X, EX)
@@ -69,10 +63,10 @@ def test_cv_unbiased():
 
 
 def test_cv_c_zero_reproduit_le_mc_brut():
-    """c = 0 doit redonner EXACTEMENT le Monte-Carlo brut sur Y.
+    """c = 0 must reproduce the raw Monte-Carlo on Y exactly.
 
-    Cas de base : si celui-la casse, l'erreur n'est pas dans l'estimation de c,
-    elle est dans la plomberie (moyenne, demi-largeur, ordre du tuple).
+    Base case: if this breaks, the fault is not in the estimation of c but in
+    the plumbing -- the mean, the half-width, or the order of the tuple.
     """
     n = 5_000
     Y, X, EX, _ = _echantillon_correle(n, np.random.default_rng(0))
@@ -80,15 +74,15 @@ def test_cv_c_zero_reproduit_le_mc_brut():
 
     assert abs(est - Y.mean()) < 1e-12
     assert abs(hw - _half_width(Y)) < 1e-12
-    assert abs(c_hat) < 1e-15          # le c IMPOSE est renvoye tel quel
+    assert abs(c_hat) < 1e-15          # an imposed c is returned as given
 
 
 def test_cv_utilise_bien_EX():
-    """PIEGE PARENTHESAGE : Y - c*X - EX au lieu de Y - c*(X - EX).
+    """Guards the parenthesisation: Y - c*(X - EX), not Y - c*X - EX.
 
-    EX = 1000 rend l'erreur impossible a rater : la version fautive decale le
-    prix de ~3000. Le second assert attrape en plus l'erreur de SIGNE
-    Y + c*(X - EX), qui double la variance au lieu de la reduire.
+    EX = 1000 makes the mistake impossible to miss: the faulty version shifts
+    the estimate by ~3000. The second assertion additionally catches the sign
+    error Y + c*(X - EX), which doubles the variance instead of reducing it.
     """
     n = 20_000
     rng = np.random.default_rng(1)
@@ -104,12 +98,12 @@ def test_cv_utilise_bien_EX():
 
 
 def test_cv_half_width_sur_le_residu():
-    """PIEGE : demi-largeur calculee sur Y au lieu du residu Z = Y - c(X - EX).
+    """The half-width must be computed on the residual Z = Y - c(X - EX), not Y.
 
-    Ici Y et X sont quasi colineaires : le residu est presque constant, donc la
-    demi-largeur doit s'effondrer. Calculee sur Y, elle ne bougerait pas d'un
-    poil et le gain de variance serait invisible — alors que c'est TOUT l'objet
-    de la technique.
+    Y and X are nearly collinear here, so the residual is almost constant and
+    the half-width must collapse. Computed on Y it would not move at all, and
+    the variance gain -- the entire point of the technique -- would be
+    invisible.
     """
     n = 10_000
     rng = np.random.default_rng(2)
@@ -125,14 +119,14 @@ def test_cv_half_width_sur_le_residu():
 
 
 def test_cv_rho_invariant_par_echelle():
-    """PIEGE PRECEDENCE : rho = cov/(sd_Y*sd_X), pas cov/sd_Y*sd_X.
+    """Guards operator precedence: rho = cov/(sd_Y*sd_X), not cov/sd_Y*sd_X.
 
-    Python lit la version fautive comme (cov/sd_Y)*sd_X. Tant que les echelles
-    valent 1 personne ne voit rien ; on multiplie X par 1000 et rho explose
-    hors de [-1, 1]. Meme famille d'erreur que le /2*h du delta.
+    Python reads the faulty form as (cov/sd_Y)*sd_X. Nothing shows while the
+    scales are of order 1; multiplying X by 1000 sends rho outside [-1, 1].
 
-    Au passage : le controle est invariant par changement d'echelle du controle
-    (c absorbe le facteur), donc estimate et demi-largeur ne doivent PAS bouger.
+    Incidentally, the control is invariant under a rescaling of the control
+    itself, c absorbing the factor, so the estimate and the half-width must not
+    move either.
     """
     n = 10_000
     Y, X, EX, _ = _echantillon_correle(n, np.random.default_rng(3))
@@ -148,10 +142,10 @@ def test_cv_rho_invariant_par_echelle():
 
 
 def test_cv_retourne_des_floats():
-    """4 floats PYTHON, pas des np.float64 ni des arrays 0-d.
+    """Four Python floats, not np.float64 nor 0-d arrays.
 
-    Ce n'est pas du purisme : le BOSS 2 serialise ces valeurs en JSON, et
-    json.dump refuse np.float64. Tout l'Acte I caste deja (float(disc.mean())).
+    The barrier sweep scripts serialise these values to JSON, and json.dump
+    rejects np.float64.
     """
     Y, X, EX, _ = _echantillon_correle(500, np.random.default_rng(4))
     out = control_variate(Y, X, EX)
@@ -159,18 +153,18 @@ def test_cv_retourne_des_floats():
     assert isinstance(out, tuple) and len(out) == 4
     for v in out:
         assert type(v) is float
-    json.dumps(list(out))          # doit passer sans TypeError
+    json.dumps(list(out))          # must not raise TypeError
 
 
 def test_cv_pas_de_N_fantome(monkeypatch):
-    """PIEGE GLOBALE FANTOME (deja arrive deux fois) : n = len(Y), point.
+    """The sample size must be len(Y), never a module-level N.
 
-    Deux verifications :
-      1. la demi-largeur doit scaler en 1/sqrt(n) — un N capte dans le module
-         la fige et le ratio s'ecroule ;
-      2. planter un mc_engine.N = 999_999 ne doit RIEN changer au resultat.
-    L'appel se fait depuis une fonction locale, sans aucune variable ambiante
-    qui pourrait etre capturee par accident.
+    Two checks:
+      1. the half-width scales as 1/sqrt(n) -- an N captured from the module
+         would freeze it and the ratio would collapse;
+      2. planting mc_engine.N = 999_999 must change nothing.
+    The call goes through a local function, with no ambient variable that could
+    be captured by accident.
     """
     def run(n, seed):
         Y, X, EX, _ = _echantillon_correle(n, np.random.default_rng(seed))
@@ -178,7 +172,7 @@ def test_cv_pas_de_N_fantome(monkeypatch):
 
     hw_petit = run(137, 1)[1]
     hw_grand = run(137*4, 1)[1]
-    assert 1.7 < hw_petit/hw_grand < 2.3       # facteur 2 attendu
+    assert 1.7 < hw_petit/hw_grand < 2.3       # factor 2 expected
 
     avant = run(137, 1)
     monkeypatch.setattr(mc_engine, "N", 999_999, raising=False)
@@ -187,19 +181,18 @@ def test_cv_pas_de_N_fantome(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# QUETE 2.2 — boss de tutoriel : le cas degenere                       [20 XP]
+# Degenerate case: the control equals the quantity of interest
 # ---------------------------------------------------------------------------
 
 def test_cv_degenere_Y_egal_X():
-    """Y = X = put vanille, EX = prix BS ferme.
+    """Y = X = vanilla put, EX = the closed-form Black-Scholes price.
 
-    Le controle connait alors PARFAITEMENT l'erreur commise : il la retranche
-    en entier et l'estimateur redonne le prix ferme, avec une demi-largeur
-    numeriquement nulle. Le Monte-Carlo a disparu.
+    The control then knows the sampling error exactly, subtracts all of it, and
+    the estimator returns the closed-form price with a numerically null
+    half-width. The Monte-Carlo has disappeared.
 
-    Tolerance 1e-12 et pas un IC : c'est une identite algebrique, aucun
-    argument statistique n'intervient. Si tu es tente d'ecrire "< ci*1.5" ici,
-    c'est que tu n'as pas vu ce qui se passe.
+    Tolerance 1e-12 rather than a CI: this is an algebraic identity, no
+    statistical argument is involved.
     """
     N = 20_000
     paths = gbm_paths(**PATH_PARAMS, n_steps=50, N=N,
@@ -217,25 +210,25 @@ def test_cv_degenere_Y_egal_X():
 
 
 # ---------------------------------------------------------------------------
-# QUETE 2.3 — branchement sur le DI put                                [40 XP]
+# Control variate applied to the down-and-in put
 # ---------------------------------------------------------------------------
 
 def test_di_put_payoffs_valeurs_a_la_main():
-    """Trajectoires jouet, resultat calcule a la main. Deux pieges vises.
+    """Toy paths, results worked out by hand. Two failure modes targeted.
 
-    PIEGE np.max vs np.maximum : np.max(K - ST) renvoie UN scalaire (le max de
-    tout le tableau) -> les trois chemins recevraient le meme payoff.
-    PIEGE axe du min : paths.min() sans axis=1 renvoie le min GLOBAL -> le
-    chemin 1, qui ne touche jamais, serait compte comme touche.
+    np.max vs np.maximum: np.max(K - ST) returns a single scalar, the maximum
+    over the whole array, so all three paths would get the same payoff.
+    Axis of the minimum: paths.min() without axis=1 returns the global minimum,
+    so path 1, which never touches, would count as knocked in.
 
-    Aucune trajectoire ne touche exactement H : la convention (< ou <=) n'est
-    pas testee ici, elle doit juste rester celle de di_put.
+    No path touches H exactly, so the strict-versus-loose convention is not
+    exercised here; it only has to match di_put.
     """
     K, H, r, T = 100.0, 85.0, 0.10, 2.0
     paths = np.array([
-        [100.,  95.,  80.,  90.],   # min=80  <= 85 : touche   -> put = 10
-        [100.,  98.,  96.,  94.],   # min=94  >  85 : intacte  -> put = 6 mais Y=0
-        [100.,  90.,  84., 130.],   # min=84  <= 85 : touche   -> put = 0
+        [100.,  95.,  80.,  90.],   # min=80  < 85 : knocked in  -> put = 10
+        [100.,  98.,  96.,  94.],   # min=94 >= 85 : intact      -> put = 6 but Y=0
+        [100.,  90.,  84., 130.],   # min=84  < 85 : knocked in  -> put = 0
     ])
     disc = np.exp(-r*T)
 
@@ -247,12 +240,12 @@ def test_di_put_payoffs_valeurs_a_la_main():
 
 
 def test_di_put_payoffs_actualisation_coherente():
-    """PIEGE ACTUALISATION : Y, X et EX doivent vivre dans la MEME unite.
+    """Y, X and EX must live in the same units.
 
-    EX = put_bs est un prix actualise. Si X sort non actualise, X.mean() - EX
-    ne mesure plus une erreur mais un ecart d'unite, et le controle DECALE le
-    prix au lieu de le stabiliser. On verrouille en exigeant que les moyennes
-    des deux vecteurs redonnent exactement les pricers de l'Acte I.
+    EX = put_bs is a discounted price. If X came back undiscounted, X.mean() -
+    EX would no longer measure a sampling error but a unit mismatch, and the
+    control would shift the price instead of stabilising it. Locked down by
+    requiring that the two sample means reproduce the plain pricers exactly.
     """
     N = 20_000
     paths = gbm_paths(**PATH_PARAMS, n_steps=50, N=N,
@@ -262,16 +255,16 @@ def test_di_put_payoffs_actualisation_coherente():
     assert Y.shape == X.shape == (N,)
     assert abs(Y.mean() - barriers.di_put(paths, K=100, H=90, r=0.05, T=1.0)[0]) < 1e-12
     assert abs(X.mean() - barriers.van_put(paths, K=100, r=0.05, T=1.0)[0]) < 1e-12
-    # le controle est le put vanille : sa moyenne doit etre proche du BS ferme
+    # the control is the vanilla put: its mean must sit near the closed form
     assert abs(X.mean() - put_bs(**PARAMS)) < _half_width(X) * 1.5
 
 
 def test_di_put_cv_accord_avec_mc_brut():
-    """Meme prix que le MC brut (a l'IC pres), sur les MEMES trajectoires.
+    """Same price as the raw Monte-Carlo, within the CI, on the SAME paths.
 
-    L'ecart entre les deux estimateurs vaut exactement c*(X_barre - EX) : il est
-    de l'ordre de l'IC du CONTROLE, pas plus. Un ecart plus grand = le controle
-    n'est pas centre (EX faux, mauvais sigma, mauvaise actualisation).
+    The gap between the two estimators is exactly c*(X_bar - EX): it is of the
+    order of the CONTROL's confidence interval, no more. A larger gap means the
+    control is not centred -- wrong EX, wrong sigma, wrong discounting.
     """
     paths = gbm_paths(**PATH_PARAMS, n_steps=50, N=50_000,
                       rng=np.random.default_rng(11))
@@ -287,14 +280,13 @@ def test_di_put_cv_accord_avec_mc_brut():
 
 
 def test_di_put_cv_reduit_la_variance():
-    """Le gain doit exister, et ne JAMAIS se retourner en perte.
+    """The gain must exist, and must never turn into a loss.
 
-    H = 95% du spot : le DI put est presque le put vanille, rho est enorme, on
-    exige au moins un facteur 2 sur la demi-largeur.
-    H = 60% du spot : le DI put ne ressemble plus a grand-chose au vanille, rho
-    s'effondre — mais un c optimal ne peut pas degrader (au pire c -> 0). Le
-    ratio doit rester sous 1. C'est la question d'entretien : "et si le controle
-    est mal choisi ?"
+    H at 95% of spot: the DI put is nearly the vanilla put, rho is very high, a
+    factor 2 on the half-width is required.
+    H at 60% of spot: the DI put no longer resembles the vanilla, rho collapses
+    -- but an optimal c cannot degrade the estimator, since at worst c -> 0. The
+    ratio must stay below 1.
     """
     paths = gbm_paths(**PATH_PARAMS, n_steps=50, N=50_000,
                       rng=np.random.default_rng(12))
@@ -311,17 +303,17 @@ def test_di_put_cv_reduit_la_variance():
 
 
 # ---------------------------------------------------------------------------
-# QUETE 2.4 — antithetiques x controle                            [20+20 XP]
+# Antithetic variates, alone and combined with the control
 # ---------------------------------------------------------------------------
 
 
 def test_gbm_paths_antithetic_partage_Z():
-    """Identite EXACTE : log(up) + log(down) ne depend pas du tirage.
+    """Exact identity: log(up) + log(down) does not depend on the draw.
 
-    Les deux branches ne different que par le signe du terme en sigma, donc
-    leur somme en log est la trajectoire de drift deterministe, doublee. Deux
-    appels separes a standard_normal (= deux tirages independants, zero
-    antithetique) cassent cette identite immediatement.
+    The two branches differ only by the sign of the sigma term, so their sum in
+    log space is the deterministic drift path, doubled. Two separate calls to
+    standard_normal -- that is, two independent draws and no antithetic
+    structure at all -- break this identity immediately.
     """
     n_steps, N = 10, 1_000
     up, down = gbm_paths_antithetic(**PATH_PARAMS, n_steps=n_steps, N=N,
@@ -330,7 +322,7 @@ def test_gbm_paths_antithetic_partage_Z():
     assert up.shape == down.shape == (N, n_steps + 1)
     assert np.all(up[:, 0] == PATH_PARAMS["S0"])
     assert np.all(down[:, 0] == PATH_PARAMS["S0"])
-    assert not np.allclose(up, down)          # sinon Z = 0 partout, pas d'alea
+    assert not np.allclose(up, down)          # otherwise Z = 0 everywhere
 
     t = np.linspace(0.0, PATH_PARAMS["T"], n_steps + 1)
     attendu = 2.0*(np.log(PATH_PARAMS["S0"])
@@ -340,18 +332,18 @@ def test_gbm_paths_antithetic_partage_Z():
 
 
 def test_cv_antithetic_N_est_le_nombre_de_paires():
-    """PIEGE : diviser par 2N au lieu de N -> demi-largeur fausse d'un sqrt(2).
+    """Dividing by 2N instead of N would make the half-width wrong by sqrt(2).
 
-    Les 2N tirages ne sont pas 2N observations independantes. On forme les
-    paires D'ABORD (l'echantillon i.i.d. a N points), on applique le controle
-    ENSUITE. Ce test pose l'egalite exacte avec cette definition : si tes quatre
-    sorties ne collent pas au 1e-12, c'est l'ordre des operations qui est faux.
+    The 2N draws are not 2N independent observations. Pairs are formed FIRST,
+    giving an i.i.d. sample of N points, and the control is applied AFTERWARDS.
+    This test states the exact equality with that definition: if the four
+    outputs do not match to 1e-12, the order of operations is wrong.
     """
     n = 8_000
     rng = np.random.default_rng(5)
     Z = rng.standard_normal(n)
     X_up, X_down = np.exp(Z), np.exp(-Z)
-    EX = float(np.exp(0.5))                      # E[e^Z] exact
+    EX = float(np.exp(0.5))                      # E[e^Z], exact
     Y_up = np.maximum(X_up - 1.0, 0.0)
     Y_down = np.maximum(X_down - 1.0, 0.0)
 
@@ -363,14 +355,15 @@ def test_cv_antithetic_N_est_le_nombre_de_paires():
 
 
 def test_cv_antithetic_domine_chaque_technique_seule():
-    """A budget de trajectoires EGAL (2N), la combinaison bat chaque technique.
+    """At an EQUAL path budget (2N), the combination beats each technique alone.
 
-    Comparer des demi-largeurs a budget different n'a aucun sens : 2N chemins
-    partout. Le put vanille sert de Y ici (payoff monotone en Z, cas ou les
-    antithetiques donnent leur maximum) et le controle est le forward
-    actualise, dont l'esperance est connue exactement : E[e^{-rT} S_T] = S0.
+    Comparing half-widths at different budgets is meaningless, so all four
+    estimators get 2N paths. The vanilla put plays the role of Y, its payoff
+    being monotone in Z, which is where antithetic variates are at their best;
+    the control is the discounted forward, whose expectation is known exactly:
+    E[e^{-rT} S_T] = S0.
     """
-    N = 25_000                                   # -> 2N = 50 000 trajectoires
+    N = 25_000                                   # -> 2N = 50 000 paths
     S0, K, r, T = 100.0, 100.0, 0.05, 1.0
     disc = np.exp(-r*T)
 
@@ -395,17 +388,17 @@ def test_cv_antithetic_domine_chaque_technique_seule():
 
 
 # ---------------------------------------------------------------------------
-# QUETE 2.5 — c figé sur run pilote                                    [20 XP]
+# Control coefficient frozen on an independent pilot run
 # ---------------------------------------------------------------------------
 
 
 def test_pilot_c_est_un_scalaire():
-    """pilot_c ne connait ni EX ni l'actualisation : c'est un ratio de moments.
+    """pilot_c knows neither EX nor discounting: it is a ratio of moments.
 
-    Deux invariances qui le prouvent :
-      * translater Y d'une constante ne change pas c (moments CENTRES — si tu
-        oublies de centrer, ca saute ici) ;
-      * multiplier X par a divise c par a.
+    Two invariances prove it:
+      * translating Y by a constant leaves c unchanged, since the moments are
+        centred;
+      * multiplying X by a divides c by a.
     """
     Y, X, _, _ = _echantillon_correle(5_000, np.random.default_rng(6))
     c = pilot_c(Y, X)
@@ -416,11 +409,10 @@ def test_pilot_c_est_un_scalaire():
 
 
 def test_pilot_c_proche_du_c_plein():
-    """Un pilote de 10 000 chemins suffit : c n'a pas besoin d'etre precis.
+    """A 10 000-path pilot is enough: c does not need to be precise.
 
-    C'est le point cle a savoir dire en entretien — une erreur sur c ne
-    biaise pas le prix, elle rogne seulement une partie du gain de variance
-    (la variance est quadratique en c autour de son optimum, donc plate).
+    An error on c does not bias the price, it only forfeits part of the variance
+    gain -- the variance is quadratic around the optimum, hence flat there.
     """
     pilote = gbm_paths(**PATH_PARAMS, n_steps=50, N=10_000,
                        rng=np.random.default_rng(31))
@@ -437,13 +429,13 @@ def test_pilot_c_proche_du_c_plein():
 
 
 def test_pilot_c_elimine_le_biais():
-    """c estime sur un echantillon INDEPENDANT -> estimateur exactement centre.
+    """c estimated on an INDEPENDENT sample gives an exactly centred estimator.
 
-    Controle de sanite : 8 repetitions independantes avec le c pilote fige,
-    moyennees, doivent retomber sur une reference haute precision. Ce test ne
-    "prouve" pas l'absence de biais O(1/N) — il est trop petit pour ca ; la
-    preuve est theorique (c fige est deterministe, donc E[c(X_barre-EX)] = 0).
-    Il attrape en revanche toute reutilisation des chemins pilotes.
+    Sanity check: eight independent repetitions with the pilot c frozen,
+    averaged, must land on a high-precision reference. This does not prove the
+    absence of the O(1/N) bias -- it is far too small for that; the proof is
+    theoretical, a frozen c being deterministic, so E[c(X_bar - EX)] = 0. It
+    does catch any reuse of the pilot paths.
     """
     ref_paths = gbm_paths(**PATH_PARAMS, n_steps=20, N=200_000,
                           rng=np.random.default_rng(99))
@@ -471,19 +463,20 @@ def test_pilot_c_elimine_le_biais():
 
 
 # ---------------------------------------------------------------------------
-# BOSS 2 — balayage de barriere                                        [80 XP]
+# Barrier sweep artefacts
 # ---------------------------------------------------------------------------
 
 
 def test_boss2_artefacts():
-    """Le boss ne se valide pas sur du code : il se valide sur ses ARTEFACTS.
+    """Checks the artefacts produced by scripts/boss2_barrier_sweep.py.
 
-    Lance : .venv/bin/python scripts/boss2_barrier_sweep.py
-    Il doit produire figures/boss2_barrier_sweep.png et figures/boss2_results.json.
+    Run: .venv/bin/python scripts/boss2_barrier_sweep.py
+    It must produce figures/boss2_barrier_sweep.png and
+    figures/boss2_results.json.
 
-    Ce que le JSON doit raconter : quand la barriere remonte vers le spot, le
-    DI put ressemble de plus en plus au put vanille, rho monte, et le ratio des
-    demi-largeurs s'effondre. C'est la courbe a savoir dessiner au tableau.
+    What the JSON has to show: as the barrier rises towards the spot, the DI put
+    resembles the vanilla put more and more, rho increases, and the ratio of
+    half-widths collapses.
     """
     fig = ROOT / "figures" / "boss2_barrier_sweep.png"
     res = ROOT / "figures" / "boss2_results.json"
@@ -500,9 +493,9 @@ def test_boss2_artefacts():
 
     assert h == sorted(h)
     assert abs(h[0] - 0.60) < 1e-9 and abs(h[-1] - 0.95) < 1e-9
-    assert all(0.0 < x <= 1.0 for x in ratio)          # jamais de degradation
+    assert all(0.0 < x <= 1.0 for x in ratio)          # never degrades
     assert all(-1.0 <= x <= 1.0 for x in rho)
-    # rho croissant en H, avec une tolerance pour le bruit MC
+    # rho increasing in H, with a tolerance for Monte-Carlo noise
     assert all(rho[i+1] > rho[i] - 0.02 for i in range(len(rho) - 1))
     assert rho[-1] > rho[0]
-    assert ratio[-1] < 0.5                             # gain massif pres du spot
+    assert ratio[-1] < 0.5                             # large gain near the spot

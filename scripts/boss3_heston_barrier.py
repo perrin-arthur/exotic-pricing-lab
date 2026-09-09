@@ -1,16 +1,16 @@
-"""BOSS 3 — DI put sous Heston, avec variable de controle. Et le smile.
+"""DI put under Heston with a control variate, plus the model's implied smile.
 
-Lance :  .venv/bin/python scripts/boss3_heston_barrier.py
-Valide par : pytest tests/test_heston.py::test_boss3_artefacts
+Run:       .venv/bin/python scripts/boss3_heston_barrier.py
+Validated: pytest tests/test_heston.py::test_boss3_artefacts
 
-CE QUE LE SCRIPT DOIT PRODUIRE (contrat lu par le test — au nom de cle pres) :
+Output contract, read by the test down to the key names:
 
   figures/boss3_heston.png
-      Deux panneaux :
-        (haut) le smile : vol implicite contre log-moneyness log(K/F) — pas
-               contre K, sinon deux maturites ne sont pas comparables ;
-        (bas)  le meme balayage de barriere que le BOSS 2, mais sous Heston :
-               ratio des demi-largeurs CV / MC en fonction de H/S0.
+      Two panels:
+        (top)    the smile, implied volatility against log-moneyness log(K/F),
+                 not against K, on which two maturities are not comparable;
+        (bottom) the same barrier sweep as under Black-Scholes, transposed to
+                 Heston: ratio of CV to MC half-widths against H/S0.
 
   figures/boss3_results.json
       {
@@ -21,21 +21,18 @@ CE QUE LE SCRIPT DOIT PRODUIRE (contrat lu par le test — au nom de cle pres) :
                    "half_width_mc":…, "price_cv":…, "half_width_cv":…,
                    "ratio_half_width":…, "c_hat":…}, …]           >= 6 points
       }
-      sweep trie par H_pct croissant, de 0.60 a 0.95. Que des floats PYTHON.
+      sweep sorted by increasing H_pct, from 0.60 to 0.95. Python floats only.
 
-  ATTENTION : la cle "rho" du sweep est la CORRELATION payoff/controle (comme au
-  BOSS 2), pas le rho du modele. Le rho du modele vit dans "params". Deux objets
-  differents, meme lettre — c'est la notation du marche, on fait avec.
+Note the collision: the "rho" key inside "sweep" is the payoff-to-control
+CORRELATION, whereas the "rho" inside "params" is the model's Brownian
+correlation. Two different objects, one letter -- market notation.
 
-LA LECTURE ATTENDUE (c'est ca, le boss) :
-  1. Le smile n'est plus plat. Sous BS, le DI put a un prix ; sous Heston il en
-     a un autre, et l'ecart n'est pas du bruit — la barriere est un evenement de
-     QUEUE, donc extremement sensible a la vol des vols et au skew. Sache dire
-     de quel cote ca bouge et pourquoi.
-  2. Le dispositif de reduction de variance, lui, ne change pas d'une ligne.
-     Seul EX change de source : put_bs devient heston_put. La courbe de gain a
-     la meme forme qu'au BOSS 2. Message : la reduction de variance est une
-     technique STATISTIQUE, independante du modele.
+What the run shows: the smile is no longer flat, and a barrier being a tail
+event, its price is highly sensitive to the vol-of-vol and to the skew. The
+variance reduction machinery, on the other hand, is reused unchanged; only the
+source of EX differs, put_bs becoming heston_put. The gain curve has the same
+shape as under Black-Scholes, which is the point -- variance reduction is a
+statistical technique, independent of the model.
 """
 
 import sys, pathlib
@@ -56,48 +53,24 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 FIGURES = ROOT / "figures"
 
 
-# ╔═══════════════════════════════════════════════════════════════╗
-# ║ BOSS 3 — DI put sous Heston + smile                    [80 XP] ║
-# ╚═══════════════════════════════════════════════════════════════╝
-# OBJECTIF   : rebrancher tout l'Acte II sur le modele de l'Acte III, et
-#              montrer que rien ne casse.
-# DEBLOQUE   : ACTE IV (multi-actif : Cholesky, worst-of, BRC)
-# VALIDATION : pytest tests/test_heston.py::test_boss3_artefacts
-#
-# INDICE 1 (intuition) : tu as deja ecrit ce script. C'est boss2_barrier_sweep,
-#     avec deux substitutions : gbm_paths -> heston_paths, et put_bs -> heston_put.
-#     Si tu te retrouves a reecrire la logique du controle, arrete-toi : c'est le
-#     signe que tes couches sont mal separees.
-# INDICE 2 (structure) : barriers.di_put et barriers.di_put_payoffs prennent des
-#     TRAJECTOIRES, pas un modele — elles marchent telles quelles sur les
-#     trajectoires Heston. En revanche barriers.di_put_cv appelle put_bs en dur
-#     (regarde la ligne), donc elle n'est PAS reutilisable ici. Deux options :
-#     (a) appeler di_put_payoffs puis control_variate a la main dans ce script,
-#     (b) generaliser di_put_cv pour qu'elle accepte EX en argument.
-#     (b) est la bonne reponse d'ingenieur, (a) va plus vite. Tranche, et sache
-#     dire pourquoi — c'est une vraie question de design d'entretien.
-# INDICE 3 (formule) : aucune formule nouvelle dans tout le boss.
-#
-# PIEGE : le controle doit etre le put vanille SUR LES MEMES TRAJECTOIRES
-#         Heston, et son EX doit etre heston_put avec les MEMES parametres. Un
-#         EX calcule en BS sur des trajectoires Heston decale le prix : c'est le
-#         piege "actualisation incoherente" de la seance 4, version modele.
-# PIEGE : heston_paths est BEAUCOUP plus lent que gbm_paths (boucle en temps).
-#         Simule UNE fois avant la boucle sur H, comme au BOSS 2 — et cette
-#         fois-ci ce n'est plus seulement pour la qualite de la courbe, c'est
-#         aussi ce qui rend le script tenable.
-# PIEGE : n_steps compte double ici. Il discretise la barriere (monitoring) ET
-#         le schema d'Euler. Un n_steps trop petit biaise le prix deux fois,
-#         pour deux raisons independantes.
-# PIEGE : le smile se trace contre log(K/F) avec F = S0*exp(r*T), pas contre K.
 def main() -> None:
-    """Produit figures/boss3_heston.png et figures/boss3_results.json.
+    """Produce figures/boss3_heston.png and figures/boss3_results.json.
 
-    Parametres suggeres : ceux de HP dans tests/test_heston.py
-    (S0=100, v0=0.04, r=0.05, T=1, kappa=1.5, theta=0.04, xi=0.3, rho=-0.7),
-    n_steps=100, N=100_000, strikes de 80 a 120, barrieres de 0.60 a 0.95.
+    barriers.di_put and barriers.di_put_payoffs take PATHS rather than a model,
+    so they work unchanged on Heston paths. barriers.di_put_cv does not: it
+    calls put_bs directly, so the control is assembled here by hand from
+    di_put_payoffs and mc_engine.control_variate, with EX taken from heston_put
+    on the same parameters. A BS-computed EX on Heston paths would shift the
+    price rather than stabilise it.
+
+    heston_paths is much slower than gbm_paths, its time loop not being
+    vectorisable, so the paths are simulated ONCE before the barrier loop --
+    which also gives the sweep common random numbers.
+
+    n_steps counts twice here: it discretises the barrier monitoring AND the
+    Euler scheme. Too small a value biases the price twice, for two independent
+    reasons.
     """
-    #params
     S0=100
     v0=0.04
     r=0.05

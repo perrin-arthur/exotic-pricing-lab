@@ -125,19 +125,27 @@ def main() -> None:
     curve_theoretical = np.sqrt(1 - np.array(rhos)**2)
     
     fig, (ax_h, ax_b) = plt.subplots(2, 1, sharex=True, figsize=(8, 7))
-    ax_h.plot(H_pcts,rhos,marker = "o")
-    ax_h.set_ylabel("ρ(DI put, put vanille)")
+    ax_h.plot(H_pcts, rhos, marker="o")
+    ax_h.set_ylabel("ρ (DI put, put vanille)")
+    ax_h.set_title("Le contrôle explique d'autant mieux que la barrière est haute",
+                   fontsize=10)
 
-    ax_b.plot(H_pcts,ratio_half_widths, marker="o", label= "ratio mesuré")
-    ax_b.plot(H_pcts,curve_theoretical,linestyle="--",label="courbe théorique")
-    ax_b.axhline(1.0,label="")
+    ax_b.plot(H_pcts, ratio_half_widths, marker="o", label="ratio mesuré")
+    ax_b.plot(H_pcts, curve_theoretical, linestyle="--", color="black",
+              label="√(1−ρ̂²) — identité algébrique, cohérence interne")
+    ax_b.axhline(1.0, color="grey", linestyle=":",
+                 label="seuil : au-dessus, le contrôle dégraderait")
     ax_b.set_ylabel("demi-IC CV / demi-IC MC")
-    ax_b.set_xlabel("H / S0 ")
-    ax_b.legend()
-    
+    ax_b.set_xlabel("H / S0")
+    ax_b.legend(fontsize=9)
+
     ax_h.grid(True, alpha=0.3)
     ax_b.grid(True, alpha=0.3)
-    fig.suptitle("DI put: gain de la variable de contrôle (contrôle = put vanille) \n S0=100, K=100, σ=0.20, r=0.05, T=1, n_steps=50, N=100 000")
+    fig.suptitle(
+        "DI put — gain de la variable de contrôle (contrôle = put vanille)\n"
+        f"S0={S0}, K={K}, σ={sigma}, r={r}, T={T}\n"
+        f"n_steps={n_steps}, N={N:,}".replace("N=100,000", "N=100 000"),
+        fontsize=11)
     fig.tight_layout()
 
     fig.savefig(FIGURES / "boss2_barrier_sweep.png", dpi=150)

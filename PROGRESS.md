@@ -1,12 +1,13 @@
 # PROGRESS — exotic-pricing-lab
 
-**XP : 340 / 450**  ·  Acte I bouclé à 190/220 (les digitales manquent) · Acte II à 150/230
+**XP : 630 / 660**  ·  Acte I bouclé à 190/220 (les digitales manquent) · Acte II **bouclé à 230/230** · Acte III **bouclé à 210/210**
 
-> **Prochaine quête débloquée : BOSS 2 — balayage de barrière 60 % → 95 % + figure (80 XP)**
-> `scripts/boss2_barrier_sweep.py` · valide avec `pytest tests/test_variance_reduction.py::test_boss2_artefacts`
-> Il débloque l'ACTE III (Heston).
+> **ACTE III BOUCLÉ.** Prochaine étape : ACTE IV — multi-actif (Cholesky) →
+> worst-of → autocall → BRC. Pas encore écrit : têtes de chapitre à poser.
+> Reste aussi la quête **1.5 (digitales, 30 XP)**, ouverte depuis l'Acte I —
+> c'est le seul trou du parcours, et 30 XP pour finir à 660/660.
 
-> Suite au vert : **28 passed, 1 xfailed** (BOSS 2).
+> Suite au vert : **48 passed, 0 xfailed**.
 
 Règle du jeu : une quête n'est acquise que si son test de validation est **vert**
 contre une référence indépendante (formule fermée, parité, identité model-free).
@@ -33,7 +34,7 @@ Restent en dette technique, non scorées : monitoring discret (prix vs `n_steps`
 Broadie-Glasserman-Kou) et delta près de la barrière — les deux étaient au
 programme du TP barrières et n'ont pas été faits.
 
-## ACTE II — Réduction de variance (150 / 230 XP)
+## ACTE II — Réduction de variance (230 / 230 XP) ✅
 
 | Quête | Statut | XP | Dépend de | Validation |
 |---|---|---|---|---|
@@ -43,7 +44,7 @@ programme du TP barrières et n'ont pas été faits.
 | 2.4a `gbm_paths_antithetic` multi-pas | ✅ | 20/20 | 1.6 | `test_gbm_paths_antithetic_partage_Z` |
 | 2.4b Antithétiques × contrôle (paires D'ABORD) | ✅ | 20/20 | 2.4a, 2.1 | `pytest -k antithetic` — 2 XPASS |
 | 2.5 `pilot_c` — c figé sur run pilote | ✅ | 20/20 | 2.3 | `pytest -k pilot` — 3 XPASS |
-| **BOSS 2** Balayage barrière 60 % → 95 % + figure | ⬜ TODO | 0/80 | 2.3, 2.5 | `test_boss2_artefacts` (lit `figures/boss2_results.json`) |
+| **BOSS 2** Balayage barrière 60 % → 95 % + figure | ✅ | 80/80 | 2.3, 2.5 | `test_boss2_artefacts` — XPASS |
 
 Où se trouve chaque bloc TODO :
 `scripts/boss2_barrier_sweep.py` → BOSS 2. `src/mc_engine.py` : plus rien pour l'Acte II.
@@ -113,9 +114,176 @@ la monnaie ont touché, le contrôle explique 99 % de la variance ; à H=65
 un contrôle « correct » ne paie presque rien, seul un contrôle quasi parfait
 paie. Corollaire vérifié à H=60 : un mauvais contrôle ne dégrade jamais (c*→0).
 
-## ACTE III — Heston mono-actif
+### BOSS 2 — le balayage (`scripts/boss2_barrier_sweep.py`)
 
-🔒 **LOCKED — se débloque au BOSS 2.** Têtes de chapitre dans `src/heston.py`.
+S0=100, K=100, σ=0.20, r=0.05, T=1, n_steps=50, N=100 000, seed=42, **un seul
+jeu de trajectoires pour les 8 barrières** (CRN : sinon ρ(H) tremble du bruit MC
+et on ne sait plus si un creux est un effet ou un artefact).
+
+| H/S0 | ρ | ratio demi-IC | c_hat | prix MC | prix CV |
+|---:|---:|---:|---:|---:|---:|
+| 0.60 | 0.2989 | 0.9543 | 0.1035 | 0.2296 | 0.2346 |
+| 0.70 | 0.6211 | 0.7838 | 0.4502 | 1.3391 | 1.3605 |
+| 0.80 | 0.8847 | 0.4661 | 0.8669 | 3.5978 | 3.6390 |
+| 0.90 | 0.9918 | 0.1279 | 1.0003 | 5.2880 | 5.3355 |
+| 0.95 | 0.9995 | 0.0303 | 1.0009 | 5.5017 | 5.5493 |
+
+Gain de 33× sur la demi-largeur au point haut, soit **1000× en variance**.
+`c_hat` monte de 0.10 à 1.00 : à H=95 % le DI put **est** le put vanille. À
+H=60 % le déclenchement est rare, `c` s'effondre vers 0 et l'estimateur se
+replie tout seul sur le MC brut — **c'est pourquoi le ratio ne dépasse jamais
+1**. Réponse à « et si votre contrôle est mal choisi ? ».
+
+`prix_cv − prix_mc ≈ +0.047` partout, **proportionnel à `c_hat`** : c'est
+`c·(X̄−EX)`, la correction mesurée sur ce jeu de chemins. Un écart *non*
+proportionnel à `c` signalerait un bug.
+
+**Limite de la figure, à savoir énoncer (trouvée par Arthur, pas par le test).**
+La courbe « théorique » √(1−ρ̂²) n'est **pas** une validation indépendante :
+avec `c = Cov/Var` estimé sur l'échantillon, `Var(Z) = Var(Y)(1−ρ̂²)`
+identiquement, donc ratio = √(1−ρ̂²) **par algèbre**. Écart mesuré aux 8
+points : **1e-15**, la précision machine. Ce que ça teste réellement :
+la cohérence interne (mêmes `ddof` entre `cov`, `var` et `std`, demi-largeur
+calculée sur le résidu et pas sur Y, même `n` des deux côtés). Une vraie
+référence externe demanderait la formule fermée de Reiner-Rubinstein — qui
+suppose un monitoring **continu**, alors qu'on monitore en 50 pas (dette
+technique Broadie-Glasserman-Kou). Présenter une tautologie comme une
+validation est le genre de chose qui coûte cher si l'examinateur pousse.
+
+## ACTE III — Heston mono-actif (210 / 210 XP) ✅
+
+🔓 **OUVERT.** Blocs TODO dans `src/heston.py`, tests dans `tests/test_heston.py`
+(16 xfailed à l'ouverture), boss dans `scripts/boss3_heston_barrier.py`.
+
+| Quête | Statut | XP | Dépend de | Validation |
+|---|---|---|---|---|
+| 3.1 `heston_paths` — Euler, 2 browniens corrélés | ✅ | 40/40 | 1.6 | `pytest -k paths` — 5 XPASS |
+| 3.2 `heston_cf` / `heston_call` / `heston_put` — semi-analytique | ✅ | 50/50 | 3.1 | 6 XPASS : limite BS, parité, accord MC |
+| 3.3 `heston_smile` — vol implicite par strike | ✅ | 40/40 | 3.2, 1.8 | `pytest -k smile` — 4 XPASS |
+| **BOSS 3** DI put sous Heston + CV + figure smile | ✅ | 80/80 | 3.3, Acte II | `test_boss3_artefacts` — XPASS |
+
+Le fil de l'acte : **simuler** (3.1) → se donner une **référence analytique**
+(3.2) → **lire** ce que le modèle produit (3.3) → **rebrancher l'Acte II
+dessus** (BOSS 3). Chaque validation est indépendante du modèle : martingale
+`E[e^{-rT}S_T]=S0`, moyenne exacte du CIR, limite dégénérée ξ→0 vers
+Black-Scholes, parité call-put. Aucun test ne compare Heston à Heston.
+
+### Séance 6 — la 3.1
+
+`E[v_T]` attendu 0.051157 / mesuré 0.050911 (0,5 %), `ρ` imposé −0.7 / mesuré
+−0.6986. Martingale et limite BS dans l'IC.
+
+**Décision de schéma à assumer.** Le tableau `v` rendu est une *sortie* : une
+variance négative y serait un `nan` en attente au premier `sqrt` en aval. D'où
+la séparation état interne / sortie rapportée (vecteur de travail `v_brut`,
+écriture tronquée dans le tableau). Attention au détail qui change le schéma :
+si la récursion relit la valeur **tronquée**, ce n'est plus la full truncation
+mais le schéma **absorbé** — la full truncation garde la mémoire de l'excursion
+négative, l'absorbé la remet à zéro. Écart mesuré ici : 1e-5 relatif, parce que
+Feller tient (2κθ = 0.12 > 0.09 = ξ²). **Sur des paramètres calibrés au marché,
+Feller est presque toujours violée** et l'écart devient visible. Lord, Koekkoek
+& van Dijk (2010) : la full truncation est la variante d'Euler la moins biaisée.
+
+### Séance 6 — la 3.2
+
+Route retenue : Heston 1993 / Gatheral, `P1`/`P2` par `scipy.integrate.quad`,
+forme d'Albrecher pour la fonction caractéristique (pas de saut de branche).
+
+| K | Heston | BS(20 %) | lecture |
+|---:|---:|---:|---|
+| 80 | 25.095 | 24.589 | strikes bas **plus chers** |
+| 100 | 10.362 | 10.451 | ATM à peu près aligné |
+| 120 | 2.193 | 3.247 | calls OTM **un tiers moins chers** |
+
+Le skew de ρ = −0.7, visible avant même d'avoir écrit 3.3.
+
+**Accord semi-analytique / MC** (N=200 000, n_steps=250) :
+`K=90 : MC 17.0984±0.0644 vs exact 17.1069` · `K=100 : 10.3505±0.0523 vs 10.3619`
+· `K=110 : 5.3053±0.0380 vs 5.3180`. Dans l'IC, mais **l'exact est au-dessus aux
+trois strikes, de ~0.012 à chaque fois**. Trois fois le même signe = biais de
+discrétisation d'Euler, pas du bruit. Vérifiable : doubler `n_steps` doit
+diviser l'écart par ~2 (Euler est en O(dt)).
+
+**Correction d'un test faux (le mien).** `test_heston_cf_limite_gaussienne`
+exigeait 1e-6 à ξ=1e-3 : impossible, l'écart réel y vaut 3.5e-4. L'écart à la
+gaussienne est en **O(ξ)**, pas O(ξ²) — le terme de skew `ρ·ξ·u³` est d'ordre
+UN, c'est la corrélation qui brise la symétrie (la courbure, elle, est en ξ²).
+Mesuré : 3.48e-3 → 3.48e-4 → 3.48e-5 pour ξ = 1e-2, 1e-3, 1e-4, et scaling en
+u³ à ξ fixé. Sous ξ ≈ 1e-5 l'erreur **remonte** (annulation catastrophique via
+`κθ/ξ²`). Le test vérifie désormais un **ratio de convergence** (facteur 10
+mesuré : 10.00) plutôt qu'un seuil — une formule fausse rate la pente, pas
+seulement le niveau.
+
+### Séance 6 — la 3.3 : ρ fait la pente, ξ fait la courbure
+
+Smile à ρ=−0.7, K de 80 à 120 (S0=100, F=105.13, T=1) :
+`0.2326 0.2235 0.2147 0.2061 0.1976 0.1895 0.1817 0.1744 0.1678`
+Pente ajustée en log-moneyness : **−0.1613** — un skew d'indice actions
+réaliste à 1 an. Vol ATM 19.76 % contre √θ = 20 % (le forward est au-dessus
+du spot).
+
+Courbure (différence seconde en log-moneyness, ρ=0 pour isoler ξ) :
+
+| ξ | courbure | ratio vs ξ=0.1 | ξ² attendu |
+|---:|---:|---:|---:|
+| 0.1 | 0.00088 | 1 | 1 |
+| 0.2 | 0.00353 | 4.01 | 4 |
+| 0.3 | 0.00781 | 8.9 | 9 |
+| 0.5 | 0.01952 | 22.2 | 25 (saturation) |
+
+**Courbure ∝ ξ² à trois chiffres significatifs.** Deux mesures indépendantes
+concordent : la fonction caractéristique donnait un terme de skew `ρ·ξ·u³`
+d'ordre UN (séance 6, 3.2), la surface de vol donne une courbure d'ordre DEUX.
+
+Traduction desk : ρ pilote le **risk reversal** (linéairement), ξ pilote le
+**butterfly** (quadratiquement). Et c'est le risk reversal qui décide du prix
+d'un BRC, parce que le down-and-in put vendu par l'investisseur vit dans l'aile
+gauche — là où le skew rend la vol chère. D'où « pourquoi Heston et pas BS ».
+
+### BOSS 3 — le DI put sous Heston (`scripts/boss3_heston_barrier.py`)
+
+S0=K=100, v0=0.04, κ=1.5, θ=0.04, ξ=0.3, ρ=−0.7, r=0.05, T=1, n_steps=50,
+N=100 000, seed=42, **une seule simulation pour les 20 barrières** (CRN).
+Contrôle = put vanille sur les mêmes trajectoires, `EX = heston_put` (3.2).
+
+| H/S0 | ρ(payoff, contrôle) | ratio demi-IC | c_hat | prix MC | prix CV |
+|---:|---:|---:|---:|---:|---:|
+| 0.60 | 0.6390 | 0.7692 | 0.4557 | 1.3064 | 1.2966 |
+| 0.70 | 0.8267 | 0.5626 | 0.7501 | 2.7142 | 2.6980 |
+| 0.80 | 0.9497 | 0.3132 | 0.9483 | 4.3431 | 4.3227 |
+| 0.90 | 0.9960 | 0.0894 | 1.0003 | 5.3445 | 5.3229 |
+| 0.95 | 0.9997 | 0.0229 | 1.0005 | 5.4864 | 5.4648 |
+
+Gain de **44× sur la demi-largeur** au point haut (~1900× en variance).
+
+Trois lectures :
+
+1. **`c_hat` démarre à 0.46**, contre 0.10 en Black-Scholes au BOSS 2. Sous
+   Heston le DI put ressemble davantage au put vanille dès H=60 % : le skew
+   épaissit l'aile gauche, donc les trajectoires qui finissent dans la monnaie
+   ont plus souvent touché une barrière basse.
+2. **`prix_cv − prix_mc = −0.0216·c_hat`**, exactement proportionnel à `c_hat`
+   → le contrôle est centré, `EX` est cohérent avec les trajectoires. Le piège
+   « EX en BS sur des trajectoires Heston » a été évité.
+3. **`heston_put`(ATM) = 5.4848 contre `put_bs`(20 %) = 5.5735**, soit −0.089 :
+   ce que le smile coûte sur un vanille ATM. Petit. Sur un DI put à barrière
+   basse l'écart de modèle est bien plus gros — c'est l'argument « pourquoi
+   Heston et pas BS » pour un BRC.
+
+**Le dispositif de l'Acte II se rebranche sans une ligne de modification.** Seule
+la source de `EX` change : `put_bs` → `heston_put`. La réduction de variance est
+une technique statistique, indépendante du modèle.
+
+Les trois pièges qui vont coûter le plus cher, annoncés :
+1. **`max(v,0)` oublié** → `nan` silencieux propagé sur toute la trajectoire.
+2. **La coupure de branche** de la fonction caractéristique (« the little
+   Heston trap ») : prix juste à T=1, délirant à T=5.
+3. **`v_{t+dt}` utilisé dans le pas du spot** au lieu de `v_t` — le test de
+   corrélation du premier pas est écrit pour ça.
+
+Ensuite (ACTE IV, verrouillé) : multi-actif par Cholesky → worst-of → autocall →
+BRC. Dette technique toujours ouverte : digitales (1.5, 30 XP), monitoring
+discret, delta près de la barrière.
 
 ---
 

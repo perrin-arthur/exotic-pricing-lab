@@ -39,46 +39,44 @@ def portfolio_terminal_value(paths: np.ndarray,
     -------
     (N,) terminal portfolio value V_T, one per path.
 
-    QUÊTE 4.1 — le portefeuille auto-financé [30 XP]
-    OBJECTIF : simuler le compte cash + actions d'une stratégie de réplication,
-        sans supposer que `deltas` est le bon delta -- c'est une mécanique
-        comptable, pas encore une question de pricing.
-    DÉBLOQUE : 4.2, et par transitivité tout le reste de l'acte -- c'est le
-        socle sur lequel `hedging_error` (4.2) est bâti.
-    VALIDATION : `tests/test_hedging.py::test_autofinancement_deltas_arbitraires`
-        -- avec des deltas TIRÉS AU HASARD (positifs, négatifs, énormes), la
-        récursion d'auto-financement doit être vérifiée à 1e-12. Aucune
-        référence de pricing n'intervient : c'est une identité algébrique,
-        vraie pour n'importe quelle suite de deltas.
-    INDICE 1 (intuition) : à chaque date de rebalancement tu achètes ou vends
-        des actions ; cet argent ne vient de nulle part, il sort d'un compte
-        cash qui, lui, a fructifié au taux sans risque depuis la dernière
-        date. Le portefeuille (actions + cash) ne reçoit ni ne perd jamais
-        d'argent "de l'extérieur" entre deux dates -- c'est ÇA,
-        l'auto-financement.
-    INDICE 2 (structure) : fais vivre deux quantités en parallèle sur la
-        boucle des dates -- le nombre d'actions détenues (donné,
-        `deltas[:, i]`) et un compte cash `B` (à calculer). `B` démarre à
-        `V0 - deltas[:, 0]*S0`. Entre deux dates, `B` capitalise au taux `r`
-        sur `dt`, PUIS absorbe le coût (positif ou négatif) du changement de
-        position en actions à la date suivante. À la toute dernière date, il
-        n'y a plus de rebalancement : la position `deltas[:, -1]` est
-        conservée jusqu'à `S[:, -1]`.
-    INDICE 3 (formule) : pour i = 0 .. n_steps-2,
-        `B_{i+1} = B_i*exp(r*dt) - (deltas[:,i+1]-deltas[:,i])*S[:,i+1]` ;
+    QUEST 4.1 -- the self-financed portfolio [30 XP]
+    GOAL: simulate the cash + shares account of a replication strategy,
+        without assuming `deltas` is the right delta -- this is bookkeeping
+        mechanics, not yet a pricing question.
+    UNLOCKS: 4.2, and by transitivity the rest of the act -- this is the
+        foundation `hedging_error` (4.2) is built on.
+    VALIDATION: `tests/test_hedging.py::test_autofinancement_deltas_arbitraires`
+        -- with RANDOMLY DRAWN deltas (positive, negative, huge), the
+        self-financing recursion must hold to 1e-12. No pricing reference is
+        involved: this is an algebraic identity, true for any sequence of
+        deltas.
+    HINT 1 (intuition): at every rebalancing date you buy or sell shares;
+        that money comes from nowhere else than a cash account, which itself
+        has grown at the risk-free rate since the last date. The portfolio
+        (shares + cash) never receives nor loses money "from the outside"
+        between two dates -- THAT is self-financing.
+    HINT 2 (structure): keep two quantities alive in parallel over the loop
+        of dates -- the number of shares held (given, `deltas[:, i]`) and a
+        cash account `B` (to compute). `B` starts at `V0 - deltas[:, 0]*S0`.
+        Between two dates, `B` grows at rate `r` over `dt`, THEN absorbs the
+        (positive or negative) cost of the change in share position at the
+        next date. At the very last date there is no more rebalancing: the
+        position `deltas[:, -1]` is held until `S[:, -1]`.
+    HINT 3 (formula): for i = 0 .. n_steps-2,
+        `B_{i+1} = B_i*exp(r*dt) - (deltas[:,i+1]-deltas[:,i])*S[:,i+1]`;
         `V_T = deltas[:,-1]*S[:,-1] + B_{n_steps-1}*exp(r*dt)`.
-    PIÈGE : `paths` a `n_steps+1` colonnes, `deltas` en a `n_steps` --
-        `deltas[:, i]` est décidé À `t_i` et vaut pour `[t_i, t_{i+1})`, donc
-        `S[:, i+1]` est le prix auquel ce changement de position se règle, pas
-        `S[:, i]`. Un décalage d'une colonne entre `paths` et `deltas` reste
-        invisible avec un delta "raisonnable" (l'erreur se noie dans le bruit
-        de couverture) ; il ne saute aux yeux qu'avec des deltas aberrants,
-        exactement ce que teste 4.1.
+    PITFALL: `paths` has `n_steps+1` columns, `deltas` has `n_steps` --
+        `deltas[:, i]` is decided AT `t_i` and holds over `[t_i, t_{i+1})`, so
+        `S[:, i+1]` is the price at which this change of position settles,
+        not `S[:, i]`. A one-column shift between `paths` and `deltas`
+        remains invisible with a "reasonable" delta (the error drowns in the
+        hedging noise); it only becomes obvious with absurd deltas, exactly
+        what 4.1 tests.
     """
     B = V0 - deltas[:, 0] * paths[:, 0]
     dt = T / (paths.shape[1] - 1)
     V_T = np.empty(paths.shape[0])
-    for i in range(deltas.shape[1] - 1): 
+    for i in range(deltas.shape[1] - 1):
         B = B * np.exp(r * dt) - (deltas[:, i + 1] - deltas[:, i]) * paths[:, i + 1]
     V_T = deltas[:, -1] * paths[:, -1] + B * np.exp(r * dt)
     return V_T
@@ -103,35 +101,36 @@ def bs_delta_hedge_deltas(paths: np.ndarray,
     (N, n_steps) deltas, deltas[:, i] evaluated at t_i with remaining maturity
     tau = T - t_i.
 
-    QUÊTE 4.2 — erreur de hedging sous le bon modèle [50 XP]
-    OBJECTIF : produire, pour chaque path et chaque date de rebalancement, le
-        delta BS calculé sur la maturité RÉSIDUELLE -- pas la maturité
-        initiale T, qui ne varierait pas d'une colonne à l'autre.
-    DÉBLOQUE : `hedging_error` puis `hedging_error_stats`, plus loin 4.3, 4.4,
-        4.5 (qui réutilise le principe pour le put vanille), 4.6.
-    VALIDATION : `test_bs_delta_hedge_deltas_vs_formule_fermee` -- au premier
-        pas (tau = T), compare deltas[:, 0] à N(d1) - 1 (put) calculé par une
-        formule fermée écrite directement dans le test, indépendante de
-        `bs.py`. Tolérance justifiée par l'ordre de grandeur d'une différence
-        finie bien réglée (1e-3), pas 1e-12 -- ce n'est pas une identité
-        algébrique.
-    INDICE 1 (intuition) : le delta d'une option n'est pas un nombre fixe, il
-        dépend du temps qu'il reste avant l'échéance. À la date t_i, il reste
-        T - t_i avant maturité -- c'est CE temps-là qu'il faut passer à la
-        formule du delta, pas T.
-    INDICE 2 (structure) : `bs.delta(S0, h, K, sigma, r, T, q=0.0)` calcule un
-        delta de CALL par différence finie -- attention à l'ordre des
-        arguments positionnels (h avant K, piège déjà documenté dans bs.py).
-        Le delta de PUT s'obtient par parité : delta_put = delta_call - 1
-        (dérivée de C - P = S - K*exp(-rT) par rapport à S). Boucle (ou
-        vectorise) sur les n_steps colonnes de `paths[:, :-1]`, avec à chaque
-        colonne i une maturité résiduelle tau_i = T - i*dt.
-    INDICE 3 (formule) : delta_put(S, tau) = N(d1(S, tau)) - 1, avec
+    QUEST 4.2 -- hedging error under the correct model [50 XP]
+    GOAL: produce, for every path and every rebalancing date, the BS delta
+        computed on the REMAINING maturity -- not the initial maturity T,
+        which would not vary from one column to the next.
+    UNLOCKS: `hedging_error` then `hedging_error_stats`, and further down
+        4.3, 4.4, 4.5 (which reuses the principle for the vanilla put), 4.6.
+    VALIDATION: `test_bs_delta_hedge_deltas_vs_formule_fermee` -- at the
+        first step (tau = T), compares deltas[:, 0] against N(d1) - 1 (put)
+        computed by a closed form written directly in the test, independent
+        of `bs.py`. Tolerance justified by the order of magnitude of a
+        well-tuned finite difference (1e-3), not 1e-12 -- this is not an
+        algebraic identity.
+    HINT 1 (intuition): an option's delta is not a fixed number, it depends
+        on how much time is left before expiry. At date t_i, T - t_i remains
+        before maturity -- THAT is the time to feed into the delta formula,
+        not T.
+    HINT 2 (structure): `bs.delta(S0, h, K, sigma, r, T, q=0.0)` computes a
+        CALL delta by finite difference -- watch the order of positional
+        arguments (h before K, a pitfall already documented in bs.py). The
+        PUT delta follows from parity: delta_put = delta_call - 1 (derivative
+        of C - P = S - K*exp(-rT) with respect to S). Loop (or vectorise)
+        over the n_steps columns of `paths[:, :-1]`, with a remaining
+        maturity tau_i = T - i*dt at each column i.
+    HINT 3 (formula): delta_put(S, tau) = N(d1(S, tau)) - 1, with
         d1(S, tau) = (log(S/K) + (r + 0.5*sigma^2)*tau) / (sigma*sqrt(tau)).
-    PIÈGE : à la DERNIÈRE date de rebalancement (i = n_steps - 1), tau = dt,
-        pas 0 -- le portefeuille n'atteint tau = 0 qu'à la toute fin, une fois
-        la position finale déjà figée (cf. 4.1, INDICE 3). Passer tau = 0 ici
-        donnerait un delta indicateur (0 ou -1 selon K vs S), pas N(d1) - 1.
+    PITFALL: at the LAST rebalancing date (i = n_steps - 1), tau = dt, not
+        0 -- the portfolio only reaches tau = 0 at the very end, once the
+        final position is already locked in (cf. 4.1, HINT 3). Passing
+        tau = 0 here would give an indicator delta (0 or -1 depending on K
+        vs S), not N(d1) - 1.
     """
     dt = T / (paths.shape[1] - 1)
     tau = T - np.arange(paths.shape[1] - 1) * dt
@@ -161,23 +160,23 @@ def hedging_error(paths: np.ndarray,
     -------
     (N,) array, V_T - payoff(S_T), undiscounted.
 
-    QUÊTE 4.2 (suite) — assembler la couverture
-    OBJECTIF : brancher `bs_delta_hedge_deltas` sur `portfolio_terminal_value`
-        (4.1) puis soustraire le payoff réellement dû à maturité.
-    VALIDATION : `test_hedging_error_moyenne_dans_ic_et_pente_log_log` (voir le
-        bloc principal sur `bs_delta_hedge_deltas`).
-    INDICE 1 (intuition) : V_T (4.1) est ce que vaut TON portefeuille de
-        réplication à l'échéance ; le payoff est ce que tu DOIS au détenteur
-        de l'option. L'écart entre les deux est ton erreur de couverture --
-        nul en temps continu, pas en rebalancement discret.
-    INDICE 2 (structure) : `deltas = bs_delta_hedge_deltas(...)`,
-        `V_T = portfolio_terminal_value(paths, deltas, r, T, V0)`, puis
-        `payoff = maximum(K - S_T, 0)` pour un put (`maximum(S_T - K, 0)` pour
-        un call) avec `S_T = paths[:, -1]`.
-    INDICE 3 (formule) : `hedging_error = V_T - payoff`.
-    PIÈGE : ne PAS actualiser ici -- V_T et le payoff vivent tous les deux à
-        maturité, l'actualisation n'a de sens que si tu veux comparer à un
-        prix à t=0 (ce que fait `vol_arbitrage_pnl` en 4.3, explicitement).
+    QUEST 4.2 (continued) -- assembling the hedge
+    GOAL: wire `bs_delta_hedge_deltas` into `portfolio_terminal_value` (4.1)
+        then subtract the payoff actually owed at maturity.
+    VALIDATION: `test_hedging_error_moyenne_dans_ic_et_pente_log_log` (see
+        the main block on `bs_delta_hedge_deltas`).
+    HINT 1 (intuition): V_T (4.1) is what YOUR replicating portfolio is worth
+        at expiry; the payoff is what you OWE the option's holder. The gap
+        between the two is your hedging error -- zero in continuous time,
+        not under discrete rebalancing.
+    HINT 2 (structure): `deltas = bs_delta_hedge_deltas(...)`,
+        `V_T = portfolio_terminal_value(paths, deltas, r, T, V0)`, then
+        `payoff = maximum(K - S_T, 0)` for a put (`maximum(S_T - K, 0)` for
+        a call) with `S_T = paths[:, -1]`.
+    HINT 3 (formula): `hedging_error = V_T - payoff`.
+    PITFALL: do NOT discount here -- V_T and the payoff both live at
+        maturity, discounting only makes sense if you want to compare to a
+        price at t=0 (which `vol_arbitrage_pnl` does explicitly, in 4.3).
     """
     portofolio = portfolio_terminal_value(paths, deltas, r, T, V0)
     S_T = paths[:, -1]
@@ -198,48 +197,48 @@ def hedging_error_stats(errors: np.ndarray) -> tuple[float, float]:
     -------
     (mean, half_width) : same convention as every estimator in the library.
 
-    QUÊTE 4.2 (suite) — statistiques et taux de convergence
-    OBJECTIF : produire (moyenne, demi-largeur IC 95%) sur un échantillon
-        d'erreurs, EXACTEMENT comme `pricer_mc_put` ou `control_variate` --
-        aucune formule nouvelle, juste la convention du repo appliquée à un
-        nouvel objet.
-    VALIDATION (l'identité qui ferme la 4.2) :
+    QUEST 4.2 (continued) -- statistics and convergence rate
+    GOAL: produce (mean, 95% CI half-width) on a sample of errors, EXACTLY
+        like `pricer_mc_put` or `control_variate` -- no new formula, just the
+        repo's convention applied to a new object.
+    VALIDATION (the identity that closes 4.2):
         `test_hedging_error_moyenne_dans_ic_et_pente_log_log` --
-        (a) sur un run, la moyenne de l'erreur doit être dans son IC 95%
-            autour de zéro (un hedge BS bien construit ne biaise pas) ;
-        (b) sur une grille de `n_steps` (ex. 8, 16, 32, ..., 256), l'écart-type
-            de l'erreur DÉCROÎT, et la régression log-log de cet écart-type
-            contre `n_steps` a une pente proche de -1/2. Testé comme une
-            PENTE (tolérance sur la régression), jamais comme un seuil
-            numérique sur une seule valeur -- une pente fausse trahit une
-            erreur de discrétisation, un seuil raté peut n'être qu'un
-            mauvais choix de N.
-    INDICE 1 (intuition) : plus tu rebalances souvent, plus ton portefeuille
-        colle à l'option -- mais jamais parfaitement, parce qu'entre deux
-        dates le delta que tu tiens est déjà légèrement faux (le spot a
-        bougé). Doubler la fréquence ne divise pas l'erreur par deux, il la
-        divise par racine de deux -- c'est une erreur de discrétisation d'un
-        processus continu, pas un bruit MC qu'on ferait fondre en augmentant N.
-    INDICE 2 (structure) : pour chaque `n_steps` de la grille, simule un
-        NOUVEAU jeu de chemins (`gbm_paths`), calcule l'erreur de hedging sur
-        ce jeu, prends son écart-type (`ddof=1`), et fais une régression
-        linéaire de `log(std)` contre `log(n_steps)` (`np.polyfit(..., 1)`) :
-        le premier coefficient est la pente cherchée.
-    INDICE 3 (formule, référence indépendante) : Boyle & Emanuel (1980) donnent
-        la variance limite de l'erreur de couverture discrète pour un
-        portefeuille delta-neutre : elle est de l'ordre de
+        (a) on a single run, the mean error must sit inside its own 95% CI
+            around zero (a correctly built BS hedge does not bias the
+            replication);
+        (b) on a grid of `n_steps` (e.g. 8, 16, 32, ..., 256), the error's
+            standard deviation DECREASES, and the log-log regression of that
+            standard deviation against `n_steps` has a slope close to -1/2.
+            Tested as a SLOPE (tolerance on the regression), never as a
+            numerical threshold on a single value -- a wrong slope betrays a
+            discretisation error, a missed threshold could just be a poor
+            choice of N.
+    HINT 1 (intuition): the more often you rebalance, the closer your
+        portfolio tracks the option -- but never perfectly, because between
+        two dates the delta you hold is already slightly wrong (the spot has
+        moved). Doubling the frequency does not halve the error, it divides
+        it by the square root of two -- this is a discretisation error of a
+        continuous process, not MC noise that would melt away by raising N.
+    HINT 2 (structure): for each `n_steps` in the grid, simulate a NEW set of
+        paths (`gbm_paths`), compute the hedging error on that set, take its
+        standard deviation (`ddof=1`), and run a linear regression of
+        `log(std)` against `log(n_steps)` (`np.polyfit(..., 1)`): the first
+        coefficient is the slope you are after.
+    HINT 3 (formula, independent reference): Boyle & Emanuel (1980) give the
+        limiting variance of the discrete hedging error for a delta-neutral
+        portfolio: it is of the order of
         `(pi/4) * (1/n_rebal) * E[ (Gamma(S_t,t) * S_t^2 * sigma^2 * dt)^2 ]`
-        sommée sur les pas, ce qui donne un écart-type en `O(1/sqrt(n_rebal))`
-        -- la pente -1/2 à tester. Ne sert QUE de justification théorique de
-        la pente attendue ; le test ne calcule pas cette formule, il mesure la
-        pente empirique.
-    PIÈGE : ne pas réutiliser le MÊME `rng` pour tous les `n_steps` de la
-        grille en croyant faire du CRN -- `gbm_paths` consomme
-        `N * n_steps` tirages, donc deux appels avec des `n_steps` différents
-        et le même générateur ne portent PAS sur les mêmes trajectoires
-        sous-jacentes. Ici ce n'est pas un problème (on ne compare pas les
-        runs entre eux terme à terme, seulement leurs écarts-types), mais s'en
-        souvenir pour ne pas le supposer ailleurs dans l'acte.
+        summed over the steps, which gives a standard deviation in
+        `O(1/sqrt(n_rebal))` -- the -1/2 slope to test. Used ONLY as the
+        theoretical justification for the expected slope; the test does not
+        compute this formula, it measures the empirical slope.
+    PITFALL: do not reuse the SAME `rng` for every `n_steps` in the grid
+        thinking it gives you CRN -- `gbm_paths` consumes `N * n_steps`
+        draws, so two calls with different `n_steps` and the same generator
+        do NOT walk over the same underlying trajectories. This is not a
+        problem here (the runs are not compared term by term, only their
+        standard deviations), but remember it so as not to assume it
+        elsewhere in the act.
     """
     mean = np.mean(errors)
     half_width = 1.96 * np.std(errors, ddof=1) / np.sqrt(errors.size)
@@ -256,7 +255,7 @@ def bs_gamma(S: np.ndarray,
 
     Identical for call and put (gamma is parity-invariant: d2C/dS2 = d2P/dS2
     since C - P is affine in S). Not in bs.py, which stays untouched; needed
-    only for the vol-arbitrage identity of QUÊTE 4.3.
+    only for the vol-arbitrage identity of QUEST 4.3.
 
     Params
     ------
@@ -269,34 +268,32 @@ def bs_gamma(S: np.ndarray,
     -------
     Gamma, same shape as the broadcast of S and tau.
 
-    QUÊTE 4.3 — vol arbitrage / modèle faux [50 XP]
-    OBJECTIF : écrire le gamma fermé de Black-Scholes -- la seule brique
-        manquante pour boucler l'identité de 4.3, puisque `bs.py` n'a que
-        delta et vega.
-    DÉBLOQUE : `vol_arbitrage_pnl`, ci-dessous.
-    VALIDATION : `test_bs_gamma_vs_difference_finie_sur_delta` -- gamma est la
-        dérivée du delta par rapport au spot ; comparé à une différence finie
-        de `bs.delta` (donc indépendant de la formule fermée elle-même),
-        tolérance 1e-4 (erreur en O(h^2) d'une différence finie centrée bien
-        réglée).
-    INDICE 1 (intuition) : le delta bouge quand le spot bouge -- le gamma
-        mesure À QUELLE VITESSE. Un gamma élevé veut dire un delta instable :
-        c'est justement ce qui rend une couverture discrète imparfaite (4.2),
-        et c'est ce paramètre-là que 4.3 va pondérer par l'écart de variance
-        entre la vol de hedge et la vol réalisée.
-    INDICE 2 (structure) : le gamma ne dépend que de d1 (pas de d2, pas de
-        N(d1) lui-même) -- c'est la DENSITÉ gaussienne évaluée en d1, mise à
-        l'échelle par S, sigma et la racine de tau. Une densité, pas un
-        tirage aléatoire : `scipy.stats.norm.pdf`, pas `np.random.*`.
-    INDICE 3 (formule) : gamma = exp(-q*tau)*phi(d1) / (S*sigma*sqrt(tau)), où
-        phi est la densité N(0,1) et
+    QUEST 4.3 -- vol arbitrage / the wrong model [50 XP]
+    GOAL: write Black-Scholes' closed-form gamma -- the only missing piece to
+        close 4.3's identity, since `bs.py` only has delta and vega.
+    UNLOCKS: `vol_arbitrage_pnl`, below.
+    VALIDATION: `test_bs_gamma_vs_difference_finie_sur_delta` -- gamma is the
+        derivative of delta with respect to spot; compared against a finite
+        difference of `bs.delta` (hence independent of the closed form
+        itself), tolerance 1e-4 (O(h^2) error of a well-tuned centred finite
+        difference).
+    HINT 1 (intuition): delta moves when spot moves -- gamma measures HOW
+        FAST. A high gamma means an unstable delta: this is exactly what
+        makes a discrete hedge imperfect (4.2), and it is this very
+        parameter that 4.3 will weight by the variance gap between hedge vol
+        and realised vol.
+    HINT 2 (structure): gamma only depends on d1 (not d2, not N(d1) itself)
+        -- it is the gaussian DENSITY evaluated at d1, scaled by S, sigma and
+        the square root of tau. A density, not a random draw:
+        `scipy.stats.norm.pdf`, not `np.random.*`.
+    HINT 3 (formula): gamma = exp(-q*tau)*phi(d1) / (S*sigma*sqrt(tau)),
+        where phi is the N(0,1) density and
         d1 = (log(S/K) + (r - q + 0.5*sigma^2)*tau) / (sigma*sqrt(tau)) --
-        même d1 que dans bs.py, à tau près (qui remplace T).
-    PIÈGE : gamma explose quand tau -> 0 pour une option proche de la monnaie
-        (division par sqrt(tau) qui tend vers 0) -- attendu, pas un bug ; ça
-        annonce déjà le problème structurel de 4.5 (delta près d'une
-        barrière), où un gamma qui explose est précisément ce qui casse la
-        couverture discrète.
+        the same d1 as in bs.py, with tau in place of T.
+    PITFALL: gamma blows up as tau -> 0 for an at-the-money option (division
+        by sqrt(tau) tending to 0) -- expected, not a bug; it already
+        foreshadows the structural problem of 4.5 (delta near a barrier),
+        where an exploding gamma is precisely what breaks discrete hedging.
     """
     d1 = (np.log(S / K) + (r - q + 0.5 * sigma**2) * tau) / (sigma * np.sqrt(tau))
     return np.exp(-q * tau) * scipy.stats.norm.pdf(d1) / (S * sigma * np.sqrt(tau))
@@ -326,72 +323,73 @@ def vol_arbitrage_pnl(paths: np.ndarray,
     -------
     (N,) discounted P&L, exp(-r*T) * (V_T - payoff(S_T)).
 
-    QUÊTE 4.3 — vol arbitrage / modèle faux [50 XP]
-    OBJECTIF : mesurer le P&L de réplication quand la vol utilisée pour
-        hedger n'est pas celle réalisée par le marché -- la question
-        d'entretien "tu marks à quelle vol, et le marché en réalise une
-        autre, qu'est-ce qui se passe ?".
-    DÉBLOQUE : rien en aval dans l'acte (branche indépendante de 4.4/4.5/4.6),
-        mais c'est la quête la plus citée en entretien structuration.
-    VALIDATION : `test_vol_arbitrage_identite_gamma` -- l'espérance du P&L
-        (moyenne sur N paths, comparée à son IC 95%) doit coïncider avec la
-        somme discrète de
+    QUEST 4.3 -- vol arbitrage / the wrong model [50 XP]
+    GOAL: measure the replication P&L when the vol used to hedge is not the
+        one realised by the market -- the classic interview question, "you
+        mark at what vol, and the market realises a different one, what
+        happens?".
+    UNLOCKS: nothing downstream in the act (an independent branch from
+        4.4/4.5/4.6), but this is the most-quoted quest in a structuring
+        interview.
+    VALIDATION: `test_vol_arbitrage_identite_gamma` -- the P&L's expectation
+        (mean over N paths, compared to its 95% CI) must coincide with the
+        discrete sum of
         `-exp(-r*t_i) * 0.5 * gamma(S_i, tau_i) * S_i^2 * (sigma_real^2 - sigma_impl^2) * dt`
-        le long des trajectoires (signe MOINS, et `exp(-r*t_i)` DANS la somme
-        -- voir PIÈGE, ce facteur a fait tomber le test une première fois).
-        C'est une IDENTITÉ (le P&L moyen doit tomber dans l'IC de la
-        référence), pas une inégalité de signe -- une identité est un test
-        bien plus dur à satisfaire par accident qu'un simple "le signe est
-        bon".
-    INDICE 1 (intuition) : couvrir en delta neutralise le PREMIER ordre
-        (le mouvement linéaire du spot), jamais le second (la courbure,
-        gamma). Si tu as hedgé en supposant une vol trop basse, tu es
-        structurellement SOUS-couvert en gamma : chaque mouvement de spot un
-        peu plus grand que prévu te coûte, ou te rapporte, selon le signe de
-        l'écart de vol. C'est le mécanisme du "gamma scalping" à l'envers.
-    INDICE 2 (structure) : la fonction elle-même ne fait rien de plus que
-        `hedging_error` (4.2), actualisée -- toute la subtilité est dans le
-        TEST, pas dans l'implémentation : il doit reconstruire une référence
-        indépendante en sommant `bs_gamma` le long des trajectoires, avec la
-        VRAIE vol des chemins (`sigma_real`, connue du test puisque c'est lui
-        qui a simulé les paths) et la vol de hedge (`sigma_impl`, passée à
-        cette fonction).
-    INDICE 3 (formule) : pose e_t = Pi_t - V_t (portefeuille moins le prix
-        marked-to-model à sigma_impl). En écrivant Itô sur e_t et en
-        substituant le theta via la PDE de Black-Scholes, les termes en
-        delta*dS s'annulent (delta = dV/dS) mais PAS tous les termes en r --
-        il reste `de_t = r*e_t*dt - 0.5*Gamma_t*S_t^2*(sigma_real^2 - sigma_impl^2)*dt`,
-        une EDO linéaire en e_t (pas juste un terme à intégrer tel quel : e_t
-        capitalise lui-même au taux r). Avec e_0 = 0 (Pi_0 = V0 par
-        construction), la résolution donne
+        along the paths (MINUS sign, and `exp(-r*t_i)` INSIDE the sum -- see
+        PITFALL, this factor broke the test once). This is an IDENTITY (the
+        mean P&L must fall inside the reference's CI), not a sign
+        inequality -- an identity is a far harder test to satisfy by
+        accident than a simple "the sign is right".
+    HINT 1 (intuition): delta-hedging neutralises the FIRST order (the
+        spot's linear move), never the second (curvature, gamma). If you
+        hedged assuming too low a vol, you are structurally UNDER-hedged in
+        gamma: every spot move a bit larger than expected costs you, or
+        earns you, money depending on the sign of the vol gap. This is
+        "gamma scalping" in reverse.
+    HINT 2 (structure): the function itself does nothing more than
+        `hedging_error` (4.2), discounted -- all the subtlety lives in the
+        TEST, not the implementation: it must rebuild an independent
+        reference by summing `bs_gamma` along the paths, with the TRUE
+        volatility of the paths (`sigma_real`, known to the test since it
+        simulated the paths) and the hedge volatility (`sigma_impl`, passed
+        to this function).
+    HINT 3 (formula): set e_t = Pi_t - V_t (portfolio minus the price
+        marked-to-model at sigma_impl). Writing Ito on e_t and substituting
+        theta via the Black-Scholes PDE, the delta*dS terms cancel
+        (delta = dV/dS) but NOT all the r terms -- what remains is
+        `de_t = r*e_t*dt - 0.5*Gamma_t*S_t^2*(sigma_real^2 - sigma_impl^2)*dt`,
+        a linear ODE in e_t (not just a term to integrate as-is: e_t
+        compounds itself at rate r). With e_0 = 0 (Pi_0 = V0 by
+        construction), solving gives
         `e_T = - integral_0^T exp(r*(T-s)) * 0.5*Gamma_s*S_s^2*(sigma_real^2 - sigma_impl^2) ds`,
-        soit, actualisé,
-        `P&L moyen actualisé ≈ E[ - integral_0^T exp(-r*s) * 0.5*Gamma_s*S_s^2*(sigma_real^2 - sigma_impl^2) ds ]`
-        où Gamma_s est évalué à sigma_impl (la vol du HEDGEUR, celle qui
-        définit son modèle de delta/gamma -- pas sigma_real, qu'il ne connaît
-        pas).
-    PIÈGE : DEUX pièges de signe/facteur empilés ici, tombés dans cet ordre en
-        écrivant ce module.
-        (1) le signe -- MOINS, pas PLUS. `V0` te place du côté VENDEUR (tu
-        encaisses `V0`, tu dois le payoff à maturité), donc ton portefeuille
-        de réplication est court gamma. Si sigma_real > sigma_impl (le marché
-        bouge plus que prévu), un court-gamma PERD de l'argent -- "vendre de
-        la vol, c'est parier que le marché ne bougera pas plus que prévu".
-        (2) le facteur `exp(-r*s)` DOIT être DANS l'intégrale, terme par
-        terme -- pas juste `exp(-r*T)` sorti en facteur global devant toute la
-        somme. La raison : l'erreur de couverture accumulée à l'instant s
-        capitalise elle-même au taux r jusqu'à T (c'est le terme `r*e_t*dt`
-        de l'EDO ci-dessus) ; l'oublier laisse un écart systématique de
-        quelques % qui NE DIMINUE PAS quand n_steps augmente -- ce n'est pas
-        un biais de discrétisation qui s'estompe, c'est un terme manquant
-        dans la formule, un piège plus retors que celui du signe parce que le
-        résultat reste plausible (bon ordre de grandeur, bon signe) à toutes
-        les échelles de test.
-        Troisième piège, documenté dans l'énoncé : le P&L est path-dependent
-        (chaque trajectoire a son propre P&L, parfois très éloigné de zéro),
-        même si son ESPÉRANCE ne dépend que de sigma_real et sigma_impl --
-        ne pas confondre "l'identité tient en moyenne" avec "chaque path est
-        proche de la référence".
+        i.e., discounted,
+        `mean discounted P&L ~= E[ - integral_0^T exp(-r*s) * 0.5*Gamma_s*S_s^2*(sigma_real^2 - sigma_impl^2) ds ]`
+        where Gamma_s is evaluated at sigma_impl (the HEDGER's vol, the one
+        defining his delta/gamma model -- not sigma_real, which he does not
+        know).
+    PITFALL: TWO sign/factor pitfalls stacked here, hit in this order while
+        writing this module.
+        (1) the sign -- MINUS, not PLUS. `V0` puts you on the SELLER's side
+        (you collect `V0`, you owe the payoff at maturity), so your
+        replicating portfolio is short gamma. If sigma_real > sigma_impl
+        (the market moves more than expected), a short-gamma book LOSES
+        money -- "selling vol means betting the market will not move more
+        than priced in".
+        (2) the `exp(-r*s)` factor MUST sit INSIDE the integral, term by
+        term -- not just `exp(-r*T)` pulled out as a global factor in front
+        of the whole sum. The reason: the hedging error accumulated at time
+        s compounds itself at rate r up to T (that is the `r*e_t*dt` term of
+        the ODE above); forgetting it leaves a systematic gap of a few
+        percent that does NOT SHRINK as n_steps grows -- this is not a
+        discretisation bias that fades away, it is a missing term in the
+        formula, a trickier pitfall than the sign one because the result
+        stays plausible (right order of magnitude, right sign) at every
+        test scale.
+        Third pitfall, documented in the prompt itself: the P&L is
+        path-dependent (every path has its own P&L, sometimes far from
+        zero), even though its EXPECTATION only depends on sigma_real and
+        sigma_impl -- do not confuse "the identity holds on average" with
+        "every path sits close to the reference".
     """
     delta = bs_delta_hedge_deltas(paths, K, sigma_impl, r, T, option=option)
     V_T = portfolio_terminal_value(paths, delta, r, T, V0)
@@ -412,33 +410,32 @@ def turnover(deltas: np.ndarray) -> np.ndarray:
     -------
     (N,) sum_i |delta_i - delta_{i-1}|, in shares.
 
-    QUÊTE 4.4 — coûts de transaction [40 XP]
-    OBJECTIF : mesurer, par path, combien de titres au total ont changé de
-        mains le long du hedge -- la brique de base, réutilisée telle quelle
-        par `transaction_costs` (pondérée en $) et par 4.5 (comme diagnostic
-        brut, sans coût attaché).
-    DÉBLOQUE : `transaction_costs`, `hedging_error_with_costs`.
-    VALIDATION : `test_turnover_deltas_constants_et_alternes` -- deltas
-        constants (turnover = |delta_0|, un seul achat, jamais de
-        rebalancement ensuite) et deltas qui alternent de signe à chaque pas
-        (turnover = somme de tous les |écarts|, cas où rien ne s'annule) :
-        deux identités fermées, calculables à la main.
-    INDICE 1 (intuition) : le turnover ne regarde que les ACTIONS échangées,
-        pas leur prix -- c'est `transaction_costs` qui, ensuite, pondère
-        chaque échange par le prix auquel il a lieu.
-    INDICE 2 (structure) : `deltas` a `n_steps` colonnes ; il y a `n_steps`
-        échanges au total -- le tout premier (l'achat initial de
-        `deltas[:, 0]` titres, puisque tu partais de zéro action) puis
-        `n_steps - 1` rebalancements entre colonnes consécutives.
-    INDICE 3 (formule) : `turnover = |deltas[:,0]| + sum_i |deltas[:,i+1] - deltas[:,i]|`
-        pour `i = 0 .. n_steps-2`.
-    PIÈGE : ne pas confondre "turnover total sur tout le chemin" (ce que rend
-        CETTE fonction, un scalaire par path) avec "turnover à CHAQUE date"
-        (un vecteur par path, `(N, n_steps)`) -- `transaction_costs` a besoin
-        du second pour pondérer chaque échange par le prix DU MOMENT, pas du
-        premier : sommer d'abord en actions puis multiplier par un prix
-        global n'a pas de sens (quel prix choisir ?), l'ordre des opérations
-        compte.
+    QUEST 4.4 -- transaction costs [40 XP]
+    GOAL: measure, per path, how many shares in total changed hands along
+        the hedge -- the base brick, reused as-is by `transaction_costs`
+        ($-weighted) and by 4.5 (as a raw diagnostic, with no cost attached).
+    UNLOCKS: `transaction_costs`, `hedging_error_with_costs`.
+    VALIDATION: `test_turnover_deltas_constants_et_alternes` -- constant
+        deltas (turnover = |delta_0|, a single purchase, never rebalanced
+        afterwards) and deltas alternating sign at every step (turnover =
+        sum of all the |gaps|, a case where nothing cancels): two closed
+        identities, computable by hand.
+    HINT 1 (intuition): turnover only looks at the SHARES traded, not their
+        price -- it is `transaction_costs` that, afterwards, weights each
+        trade by the price at which it happens.
+    HINT 2 (structure): `deltas` has `n_steps` columns; there are `n_steps`
+        trades in total -- the very first one (the initial purchase of
+        `deltas[:, 0]` shares, since you started from zero shares) then
+        `n_steps - 1` rebalancings between consecutive columns.
+    HINT 3 (formula): `turnover = |deltas[:,0]| + sum_i |deltas[:,i+1] - deltas[:,i]|`
+        for `i = 0 .. n_steps-2`.
+    PITFALL: do not confuse "total turnover over the whole path" (what THIS
+        function returns, a scalar per path) with "turnover at EACH date" (a
+        vector per path, `(N, n_steps)`) -- `transaction_costs` needs the
+        second one to weight each trade by the price AT THAT MOMENT, not the
+        first one: summing in shares first and then multiplying by a global
+        price makes no sense (which price would you even pick?), the order
+        of operations matters.
     """
     turnover = np.abs(deltas[:, 0])  # initial purchase counts
     turnover += np.sum(np.abs(np.diff(deltas, axis=1)), axis=1)
@@ -460,35 +457,34 @@ def transaction_costs(paths: np.ndarray,
     (N,) total undiscounted cost paid along the path,
     cost_rate * sum_i |delta_i - delta_{i-1}| * S_i.
 
-    QUÊTE 4.4 (suite) — pondérer le turnover par le prix
-    OBJECTIF : transformer un turnover en ACTIONS (`turnover`, ci-dessus) en
-        un coût en DOLLARS, en pondérant chaque échange par le prix auquel il
-        a réellement lieu.
-    VALIDATION : `test_transaction_costs_frequence_optimale` -- voir le bloc
-        principal sur `hedging_error_with_costs`.
-    INDICE 1 (intuition) : chaque rebalancement a lieu À UN PRIX PRÉCIS,
-        celui du spot à cette date-là -- pas un prix moyen, pas le prix final.
-        Le coût de chaque échange s'écrit AVANT de sommer sur les dates, pas
-        après.
-    INDICE 2 (structure) : contrairement à `turnover`, qui réduit tout de
-        suite à un scalaire par path, ici il faut garder un tableau
-        `(N, n_steps)` de turnover PAR DATE -- `|deltas[:,0]|` en colonne 0,
-        puis `|diff(deltas, axis=1)|` pour les colonnes suivantes (même
-        contenu que dans `turnover`, mais SANS sommer sur l'axe des dates
-        avant de multiplier par le prix).
-    INDICE 3 (formule) : `turnover_par_date = concatenate([|deltas[:,0:1]|, |diff(deltas, axis=1)|], axis=1)`,
-        un tableau `(N, n_steps)` ; puis
-        `cost = cost_rate * sum(turnover_par_date * paths[:, :-1], axis=1)`
-        (`paths[:, :-1]`, PAS `paths[:, 1:]` -- l'échange à la date `i` se
-        règle au prix `S_i`, celui affiché À CETTE DATE, pas au prochain).
-    PIÈGE : appeler `turnover(deltas)` ici et multiplier le résultat (un
-        scalaire par path) par `paths[:, :-1]` (une matrice par path) ne
-        marche pas -- ce sont deux formes différentes du même calcul,
-        l'agrégation (somme sur les dates) doit avoir lieu APRÈS la
-        pondération par le prix, pas avant. `turnover` répond à "combien
-        d'actions au total ?", `transaction_costs` a besoin de "combien
-        d'actions, À CHAQUE date, à QUEL prix ?" -- deux questions
-        différentes, malgré le nom qui se ressemble.
+    QUEST 4.4 (continued) -- weighting turnover by price
+    GOAL: turn a turnover in SHARES (`turnover`, above) into a cost in
+        DOLLARS, by weighting each trade by the price at which it actually
+        happens.
+    VALIDATION: `test_transaction_costs_frequence_optimale` -- see the main
+        block on `hedging_error_with_costs`.
+    HINT 1 (intuition): every rebalancing happens AT A SPECIFIC PRICE, the
+        spot on that date -- not an average price, not the final price. The
+        cost of each trade is written BEFORE summing over dates, not after.
+    HINT 2 (structure): unlike `turnover`, which immediately collapses to a
+        scalar per path, here you need to keep an `(N, n_steps)` array of
+        turnover PER DATE -- `|deltas[:,0]|` in column 0, then
+        `|diff(deltas, axis=1)|` for the following columns (same content as
+        in `turnover`, but WITHOUT summing over the date axis before
+        multiplying by the price).
+    HINT 3 (formula): `turnover_per_date = concatenate([|deltas[:,0:1]|, |diff(deltas, axis=1)|], axis=1)`,
+        an `(N, n_steps)` array; then
+        `cost = cost_rate * sum(turnover_per_date * paths[:, :-1], axis=1)`
+        (`paths[:, :-1]`, NOT `paths[:, 1:]` -- the trade at date `i` settles
+        at price `S_i`, the one showing AT THAT DATE, not the next one).
+    PITFALL: calling `turnover(deltas)` here and multiplying the result (a
+        scalar per path) by `paths[:, :-1]` (a matrix per path) does not
+        work -- these are two different shapes of the same computation, the
+        aggregation (summing over dates) must happen AFTER the price
+        weighting, not before. `turnover` answers "how many shares in
+        total?", `transaction_costs` needs "how many shares, at EACH date,
+        at WHAT price?" -- two different questions, despite the similar
+        name.
     """
     turnover = np.abs(deltas[:, 0])  # initial purchase counts
     turnover = turnover[:, np.newaxis]  # shape (N, 1) for broadcasting
@@ -515,44 +511,45 @@ def hedging_error_with_costs(paths: np.ndarray,
     -------
     (N,) array, undiscounted.
 
-    QUÊTE 4.4 (suite) — la fréquence optimale
-    OBJECTIF : montrer qu'il existe un `n_steps` optimal, ni trop rare (erreur
-        de couverture élevée) ni trop fréquent (coûts qui dominent) --
-        l'arbitrage concret que fait un desk.
-    VALIDATION (l'identité qui ferme la 4.4) :
-        `test_transaction_costs_frequence_optimale` -- sur une grille de
-        `n_steps` croissants (mêmes trajectoires que 4.2, cost_rate fixé) :
-        (a) le coût moyen de transaction CROÎT en `sqrt(n_rebal)` (pente log-log
-        ≈ +1/2, testée avec la même tolérance que la pente -1/2 de 4.2) ;
-        (b) l'écart-type de l'erreur de hedging SANS coûts continue de
-        décroître comme en 4.2 ; (c) en combinant les deux dans une mesure
-        d'erreur totale (ex. RMS de `hedging_error_with_costs`), il existe un
-        `n_steps` intermédiaire qui minimise cette mesure -- ni le plus petit
-        ni le plus grand de la grille.
-    INDICE 1 (intuition) : rebalancer plus souvent réduit l'erreur de
-        réplication (4.2) mais chaque rebalancement coûte quelque chose
-        (4.4) -- les deux effets bougent en sens opposé avec `n_steps`, donc
-        quelque part au milieu, leur somme est minimale. C'est l'argument de
-        Leland (1985) : au-delà d'une fréquence optimale, se couvrir plus
-        souvent coûte plus cher que ça ne rapporte en précision.
-    INDICE 2 (structure) : cette fonction ne fait qu'assembler ce qui existe
-        déjà -- `portfolio_terminal_value` (4.1), le payoff (comme dans
-        `hedging_error`, 4.2), et `transaction_costs` (ci-dessus) -- toute la
-        substance de la quête est dans le TEST, comme pour 4.2/4.3.
-    INDICE 3 (formule, référence indépendante) : Leland (1985) ajuste la vol
-        de hedge d'un terme `sigma_Leland^2 = sigma^2 * (1 + sqrt(2/pi) * k / (sigma*sqrt(dt)))`,
-        où `k` est le taux de coût proportionnel -- le coût total attendu
-        croît comme `E[turnover] * S * k`, et `E[turnover]` croît lui-même en
-        `sqrt(n_rebal)` (marche aléatoire du delta, dont les incréments ont un
-        écart-type en `sqrt(dt) = sqrt(T/n_rebal)`, sommés sur `n_rebal` pas
-        indépendants). Donné en référence théorique de la pente attendue ; le
-        test ne calcule pas cette formule, il mesure la pente empirique du
-        coût.
-    PIÈGE : `hedging_error_with_costs` retourne V_T - payoff - costs, donc un
-        `cost_rate` élevé rend l'erreur SYSTÉMATIQUEMENT négative (en moyenne)
-        -- ce n'est plus centré en zéro comme en 4.2, et c'est ATTENDU : les
-        coûts sont une perte certaine, pas un bruit. Ne pas réutiliser le test
-        "moyenne dans l'IC autour de zéro" de 4.2 tel quel ici.
+    QUEST 4.4 (continued) -- the optimal frequency
+    GOAL: show that an optimal `n_steps` exists, neither too rare (high
+        replication error) nor too frequent (costs dominate) -- the concrete
+        trade-off a desk actually makes.
+    VALIDATION (the identity that closes 4.4):
+        `test_transaction_costs_frequence_optimale` -- on a grid of
+        increasing `n_steps` (same paths as 4.2, fixed cost_rate):
+        (a) the mean transaction cost GROWS as `sqrt(n_rebal)` (log-log slope
+        ~= +1/2, tested with the same tolerance as 4.2's -1/2 slope);
+        (b) the hedging error's standard deviation WITHOUT costs keeps
+        decreasing as in 4.2; (c) combining the two into a total error
+        measure (e.g. RMS of `hedging_error_with_costs`), there is an
+        intermediate `n_steps` that minimises that measure -- neither the
+        smallest nor the largest in the grid.
+    HINT 1 (intuition): rebalancing more often reduces the replication error
+        (4.2) but every rebalancing costs something (4.4) -- the two effects
+        move in opposite directions as `n_steps` grows, so somewhere in the
+        middle their sum is minimal. This is Leland's (1985) argument:
+        beyond an optimal frequency, hedging more often costs more than it
+        gains in precision.
+    HINT 2 (structure): this function only assembles what already exists --
+        `portfolio_terminal_value` (4.1), the payoff (as in `hedging_error`,
+        4.2), and `transaction_costs` (above) -- all the substance of the
+        quest lives in the TEST, as for 4.2/4.3.
+    HINT 3 (formula, independent reference): Leland (1985) adjusts the hedge
+        vol by a term
+        `sigma_Leland^2 = sigma^2 * (1 + sqrt(2/pi) * k / (sigma*sqrt(dt)))`,
+        where `k` is the proportional cost rate -- the expected total cost
+        grows as `E[turnover] * S * k`, and `E[turnover]` itself grows as
+        `sqrt(n_rebal)` (a random walk of the delta, whose increments have a
+        standard deviation in `sqrt(dt) = sqrt(T/n_rebal)`, summed over
+        `n_rebal` independent steps). Given as a theoretical reference for
+        the expected slope; the test does not compute this formula, it
+        measures the empirical slope of the cost.
+    PITFALL: `hedging_error_with_costs` returns V_T - payoff - costs, so a
+        high `cost_rate` makes the error SYSTEMATICALLY negative (on
+        average) -- it is no longer centred at zero as in 4.2, and that is
+        EXPECTED: costs are a certain loss, not noise. Do not reuse 4.2's
+        "mean inside the CI around zero" test here as-is.
     """
     V_T = portfolio_terminal_value(paths, deltas, r, T, V0)
     S_T = paths[:, -1]
@@ -587,46 +584,46 @@ def naive_barrier_hedge_error(paths: np.ndarray,
     -------
     (N,) hedging error, undiscounted.
 
-    QUÊTE 4.5 — delta près d'une barrière [40 XP]
-    OBJECTIF : mesurer ce qui casse quand on hedge une option À BARRIÈRE avec
-        le SEUL delta disponible en forme fermée -- celui du vanille sur le
-        même K, T. Le vrai delta d'un DO/DI put (la dérivée du PRIX BARRIÈRE
-        par rapport au spot) n'a pas de formule fermée ici (monitoring
-        discret, cf. README "Not covered") ; c'est le mismatch qu'un desk
-        affronte concrètement dès qu'aucun Grec barrière n'est disponible.
-    DÉBLOQUE : rien en aval (branche indépendante de 4.6), mais c'est LA
-        quête "vrai problème métier" de l'acte.
-    VALIDATION : `test_naive_barrier_hedge_degrade_pres_de_la_barriere` --
-        pas de référence fermée (donc pas d'identité), le test porte sur ce
-        qui DOIT casser : à `n_steps` fixé, l'écart-type de l'erreur de hedge
-        AUGMENTE nettement quand `H` se rapproche de `S0`, comparé à un `H`
-        loin du spot. Un test qui prouve une DÉGRADATION vaut autant qu'un
-        test qui prouve une convergence (cf. 4.2) -- il porte juste sur le
-        sens de variation d'une statistique, pas sur un seuil numérique nu.
-    INDICE 1 (intuition) : le delta vanille ne "voit" jamais la barrière --
-        il varie doucement avec S, alors que le VRAI prix d'un DO/DI put a
-        une pente qui change brutalement quand S croise H (le payoff lui-même
-        est discontinu en trajectoire : `max(K-S_T,0)` multiplié par un
-        indicateur qui bascule à 0 ou 1). Plus H est proche de S0, plus les
-        trajectoires traversent H souvent, plus le delta vanille est
-        structurellement à côté de la plaque à ces moments-là.
-    INDICE 2 (structure) : `deltas = bs_delta_hedge_deltas(paths, K, sigma, r, T, option)`
-        (exactement comme en 4.2, AUCUNE dépendance à `H` dans le calcul du
-        delta -- c'est le point) ; `V_T = portfolio_terminal_value(paths, deltas, r, T, V0)` ;
-        puis le VRAI payoff barrière (pas le payoff vanille) à partir de
-        `paths.min(axis=1)` et de la condition `barrier`.
-    INDICE 3 (formule) : payoff vanille `p = maximum(K - S_T, 0)` (put) ou
-        `maximum(S_T - K, 0)` (call) ; `min_path = paths.min(axis=1)` ;
-        DO -- payoff = `where(min_path >= H, p, 0)` (survit tant que la
-        barrière n'est jamais touchée, convention stricte comme dans
-        `barriers.py`) ; DI -- payoff = `where(min_path < H, p, 0)`.
-        Erreur = `V_T - payoff`.
-    PIÈGE : `V0` doit être le prix du VRAI DO/DI put (typiquement
-        `barriers.do_put(paths, K, H, r, T)[0]` ou `di_put(...)`, sur les
-        MÊMES trajectoires), pas `bs.put_bs(...)` -- financer la réplication
-        avec le mauvais prix de départ biaiserait l'erreur d'un terme
-        constant qui n'aurait rien à voir avec la dégradation du delta,
-        exactement le même piège que le `sigma` en dur repéré en 4.2.
+    QUEST 4.5 -- delta near a barrier [40 XP]
+    GOAL: measure what breaks when hedging a BARRIER option with the ONLY
+        delta available in closed form -- the vanilla's, on the same K, T.
+        The true delta of a DO/DI put (the derivative of the BARRIER PRICE
+        with respect to spot) has no closed form here (discrete monitoring,
+        cf. README "Not covered"); this is the mismatch a desk faces the
+        moment no barrier Greek is available.
+    UNLOCKS: nothing downstream (an independent branch from 4.6), but this
+        is THE "real business problem" quest of the act.
+    VALIDATION: `test_naive_barrier_hedge_degrade_pres_de_la_barriere` -- no
+        closed-form reference (hence no identity), the test is about what
+        MUST break: at fixed `n_steps`, the hedge error's standard deviation
+        INCREASES sharply as `H` gets closer to `S0`, compared to an `H` far
+        from spot. A test that proves a DEGRADATION is worth as much as one
+        that proves convergence (cf. 4.2) -- it is only about the direction
+        of a statistic, not a bare numerical threshold.
+    HINT 1 (intuition): the vanilla delta never "sees" the barrier -- it
+        varies smoothly with S, while the TRUE price of a DO/DI put has a
+        slope that changes abruptly whenever S crosses H (the payoff itself
+        is discontinuous path by path: `max(K-S_T,0)` multiplied by an
+        indicator that flips between 0 and 1). The closer H is to S0, the
+        more often paths cross H, the more structurally off the vanilla
+        delta is at those moments.
+    HINT 2 (structure): `deltas = bs_delta_hedge_deltas(paths, K, sigma, r, T, option)`
+        (exactly as in 4.2, NO dependency on `H` in the delta computation --
+        that is the point); `V_T = portfolio_terminal_value(paths, deltas, r, T, V0)`;
+        then the TRUE barrier payoff (not the vanilla payoff) from
+        `paths.min(axis=1)` and the `barrier` condition.
+    HINT 3 (formula): vanilla payoff `p = maximum(K - S_T, 0)` (put) or
+        `maximum(S_T - K, 0)` (call); `min_path = paths.min(axis=1)`;
+        DO -- payoff = `where(min_path >= H, p, 0)` (survives as long as the
+        barrier is never touched, the same strict convention as in
+        `barriers.py`); DI -- payoff = `where(min_path < H, p, 0)`.
+        Error = `V_T - payoff`.
+    PITFALL: `V0` must be the price of the TRUE DO/DI put (typically
+        `barriers.do_put(paths, K, H, r, T)[0]` or `di_put(...)`, on the
+        SAME paths), not `bs.put_bs(...)` -- funding the replication with
+        the wrong starting price would bias the error by a constant term
+        that has nothing to do with the delta's degradation, exactly the
+        same pitfall as the hard-coded `sigma` spotted in 4.2.
     """
     deltas = bs_delta_hedge_deltas(paths, K, sigma, r, T, option)
     V_T = portfolio_terminal_value(paths, deltas, r, T, V0)
@@ -663,32 +660,32 @@ def heston_delta_bs_hedge_error(S: np.ndarray,
     -------
     (N,) hedging error, undiscounted.
 
-    QUÊTE 4.6 — delta-vega sous Heston [50 XP]
-    OBJECTIF : hedger en delta BS SEUL (une vol constante, plate) des
-        trajectoires simulées sous un modèle qui a un vrai smile -- montrer
-        que le hedge est biaisé ET à variance élevée, faute de vega couvert.
-    DÉBLOQUE : `heston_delta_vega_hedge_error`, ci-dessous (qui rajoute
-        l'overlay vega et doit faire chuter la variance).
-    VALIDATION : `test_heston_delta_vega_reduit_la_variance` -- voir le bloc
-        principal sur `heston_delta_vega_hedge_error`.
-    INDICE 1 (intuition) : le delta BS suppose une vol CONSTANTE dans le
-        temps et dans l'espace ; sous Heston la vol est STOCHASTIQUE (elle a
-        sa propre source d'aléa, corrélée au spot par `rho`). Un hedge qui ne
-        regarde que le spot laisse filer tout le risque porté par les
-        mouvements de la vol elle-même -- c'est exactement ce qu'un vega
-        mesure, et ce hedge n'en a aucun.
-    INDICE 2 (structure) : structurellement identique à `hedging_error` (4.2)
-        -- `bs_delta_hedge_deltas(S, K, sigma_hedge, r, T, option)`,
-        `portfolio_terminal_value(S, deltas, r, T, V0)`, payoff à maturité --
-        seule différence : `S` vient de `heston.heston_paths`, pas de
+    QUEST 4.6 -- delta-vega under Heston [50 XP]
+    GOAL: hedge with the BS delta ALONE (a flat, constant vol) on paths
+        simulated under a model that has a real smile -- show that the hedge
+        is biased AND runs at high variance, for lack of any vega covered.
+    UNLOCKS: `heston_delta_vega_hedge_error`, below (which adds the vega
+        overlay and must bring the variance down).
+    VALIDATION: `test_heston_delta_vega_reduit_la_variance` -- see the main
+        block on `heston_delta_vega_hedge_error`.
+    HINT 1 (intuition): the BS delta assumes a CONSTANT vol, in time and in
+        space; under Heston, vol is STOCHASTIC (it has its own source of
+        randomness, correlated to spot through `rho`). A hedge that only
+        looks at spot lets all the risk carried by the vol's own moves run
+        free -- that is exactly what a vega measures, and this hedge has
+        none.
+    HINT 2 (structure): structurally identical to `hedging_error` (4.2) --
+        `bs_delta_hedge_deltas(S, K, sigma_hedge, r, T, option)`,
+        `portfolio_terminal_value(S, deltas, r, T, V0)`, payoff at maturity
+        -- the only difference: `S` comes from `heston.heston_paths`, not
         `gbm_paths`.
-    INDICE 3 (formule) : rien de nouveau, c'est un simple branchement de 4.2
-        sur des trajectoires Heston au lieu de GBM.
-    PIÈGE : `V0` doit être cohérent avec `sigma_hedge` -- typiquement
-        `bs.put_bs(S0, K, sigma_hedge, r, T)`, PAS `heston.heston_put(...)`
-        (qui donnerait le vrai prix du modèle, pas celui, plat et faux, que
-        le hedgeur croit utiliser). Mélanger les deux ferait disparaître
-        EXACTEMENT le biais qu'on cherche à mesurer.
+    HINT 3 (formula): nothing new, this is simply 4.2 wired onto Heston
+        paths instead of GBM.
+    PITFALL: `V0` must be consistent with `sigma_hedge` -- typically
+        `bs.put_bs(S0, K, sigma_hedge, r, T)`, NOT `heston.heston_put(...)`
+        (which would give the model's true price, not the flat, wrong one
+        the hedger believes he is using). Mixing the two would make
+        EXACTLY the bias you are trying to measure disappear.
     """
     deltas = bs_delta_hedge_deltas(S, K, sigma_hedge, r, T, option)
     V_T = portfolio_terminal_value(S, deltas, r, T, V0)
@@ -720,64 +717,62 @@ def heston_delta_vega_hedge_error(S: np.ndarray,
     -------
     (N,) hedging error of the delta+static-vega book, undiscounted.
 
-    QUÊTE 4.6 (suite) — l'overlay vega
-    OBJECTIF : ajouter, EN PLUS du delta hedge dynamique de
-        `heston_delta_bs_hedge_error`, une position STATIQUE (figée à t=0,
-        jamais rebalancée) dans un vanille sur un autre strike, dimensionnée
-        pour annuler le vega de la position à t=0 -- et montrer que la
-        variance résiduelle chute.
-    VALIDATION (l'identité qui ferme la 4.6) :
-        `test_heston_delta_vega_reduit_la_variance` -- à N et n_steps
-        identiques, `Var(heston_delta_bs_hedge_error) / Var(heston_delta_vega_hedge_error) > 1`,
-        avec un intervalle de confiance sur ce ratio (bootstrap ou F-test
-        approximatif) -- pas juste "plus petit", un RAPPORT DE VARIANCES
-        significativement supérieur à 1, à budget de trajectoires égal.
-    INDICE 1 (intuition) : tu ne peux pas rebalancer le vega en continu aussi
-        facilement que le delta (il faudrait retrader l'option de couverture
-        à chaque pas, ce qui a un coût et sort du cadre de cette quête) --
-        mais même une couverture vega STATIQUE, posée une fois à t=0 et
-        jamais retouchée, absorbe une bonne partie du risque de vol qui
-        échappait au hedge delta seul.
-    INDICE 2 (structure) : à t=0, calcule
+    QUEST 4.6 (continued) -- the vega overlay
+    GOAL: add, ON TOP OF the dynamic delta hedge of
+        `heston_delta_bs_hedge_error`, a STATIC position (locked in at t=0,
+        never rebalanced) in a vanilla on another strike, sized to cancel
+        the position's vega at t=0 -- and show that the residual variance
+        drops.
+    VALIDATION (the identity that closes 4.6):
+        `test_heston_delta_vega_reduit_la_variance` -- at identical N and
+        n_steps, `Var(heston_delta_bs_hedge_error) / Var(heston_delta_vega_hedge_error) > 1`,
+        with a confidence interval on that ratio (bootstrap or an
+        approximate F-test) -- not just "smaller", a VARIANCE RATIO
+        significantly above 1, at an equal path budget.
+    HINT 1 (intuition): you cannot rebalance vega continuously as easily as
+        delta (you would have to retrade the hedging option at every step,
+        which has a cost and falls outside this quest's scope) -- but even a
+        STATIC vega hedge, put on once at t=0 and never touched again,
+        absorbs a good part of the vol risk that escaped the delta-only
+        hedge.
+    HINT 2 (structure): at t=0, compute
         `n_vega = bs.vega(S0, K, sigma_hedge, r, T) / bs.vega(S0, K_vega, sigma_hedge, r, T)`
-        (le ratio des vegas BS des deux options, à la vol de hedge -- combien
-        d'unités de l'option `K_vega` il faut pour égaler le vega de la
-        cible). Le portefeuille total détient alors, À CHAQUE date, le delta
-        BS de la cible PLUS `n_vega` fois le delta BS de l'instrument
-        `K_vega` (les deux calculés par `bs_delta_hedge_deltas`, même
-        `sigma_hedge`, chacun sur son propre strike) -- `n_vega` est FIGÉ,
-        calculé une seule fois, mais son DELTA, lui, continue d'être
-        rebalancé à chaque date comme celui de la cible (piège ci-dessous).
-        Le cash de départ doit financer l'achat des `n_vega` unités de
-        l'overlay, en plus de la réplication de la cible.
-    INDICE 3 (formule) : `deltas_total = bs_delta_hedge_deltas(S,K,...) - n_vega*bs_delta_hedge_deltas(S,K_vega,...)` --
-        SOUSTRAIT, pas ajouté (voir PIÈGE 1) ;
-        `V0_total = V0 - n_vega*bs.put_bs(S0,K_vega,sigma_hedge,r,T)` (ou
-        `call_bs`, selon `option`) ; `payoff_total = payoff(K) - n_vega*payoff(K_vega)`
-        (tu ENCAISSES le payoff de l'overlay que tu détiens, il compense une
-        partie de ce que tu dois sur la cible) ; erreur =
+        (the ratio of the two options' BS vegas, at the hedge vol -- how
+        many units of the `K_vega` option are needed to match the target's
+        vega). The total portfolio then holds, at EVERY date, the target's
+        BS delta PLUS `n_vega` times the `K_vega` instrument's BS delta
+        (both computed by `bs_delta_hedge_deltas`, same `sigma_hedge`, each
+        on its own strike) -- `n_vega` is FIXED, computed once, but its
+        DELTA keeps being rebalanced at every date just like the target's
+        (pitfall below). The starting cash must fund the purchase of the
+        `n_vega` units of the overlay, on top of replicating the target.
+    HINT 3 (formula): `deltas_total = bs_delta_hedge_deltas(S,K,...) - n_vega*bs_delta_hedge_deltas(S,K_vega,...)`
+        -- SUBTRACTED, not added (see PITFALL 1);
+        `V0_total = V0 - n_vega*bs.put_bs(S0,K_vega,sigma_hedge,r,T)` (or
+        `call_bs`, depending on `option`); `payoff_total = payoff(K) - n_vega*payoff(K_vega)`
+        (you COLLECT the payoff of the overlay you hold, it offsets part of
+        what you owe on the target); error =
         `portfolio_terminal_value(S, deltas_total, r, T, V0_total) - payoff_total`.
-    PIÈGE : deux pièges ici.
-        (1) le signe du delta de l'overlay -- `deltas_total` SOUSTRAIT
-        `n_vega*delta_Kvega`, ne l'ajoute pas. Raison : `bs_delta_hedge_deltas`
-        rend le delta à utiliser directement pour répliquer une position
-        COURTE (c'est la convention déjà validée en 4.2 -- `deltas` branché
-        tel quel dans `portfolio_terminal_value` avec `V0` = prime encaissée).
-        L'overlay, lui, est une position LONGUE (tu ACHÈTES `n_vega` unités
-        de l'option `K_vega`) -- une position longue en delta `δ` a besoin de
-        `-δ` actions pour être delta-neutre, pas `+δ`. Se tromper de signe ici
-        ne dégrade pas la variance, il l'AUGMENTE largement (mesuré : ratio
-        de variance sous 1 au lieu d'être nettement au-dessus) -- si ton
-        `test_heston_delta_vega_reduit_la_variance` échoue avec un ratio très
-        inférieur à 1, regarde ce signe en premier.
-        (2) "statique" qualifie la QUANTITÉ `n_vega` (calculée une fois, à
-        t=0), PAS le delta de l'instrument de couverture -- son delta, lui,
-        varie avec S et tau comme n'importe quel delta BS, et doit être
-        rebalancé à chaque date exactement comme celui de la cible. Un overlay
-        "vraiment statique" (delta jamais recalculé non plus) laisserait
-        filer un delta résiduel et fausserait la comparaison : la quête ne
-        teste la réduction de variance QUE si le delta total reste
-        correctement suivi à chaque pas.
+    PITFALL: two pitfalls here.
+        (1) the sign of the overlay's delta -- `deltas_total` SUBTRACTS
+        `n_vega*delta_Kvega`, does not add it. Reason: `bs_delta_hedge_deltas`
+        returns the delta to be used directly to replicate a SHORT position
+        (the convention already validated in 4.2 -- `deltas` wired as-is
+        into `portfolio_terminal_value` with `V0` = premium collected). The
+        overlay, however, is a LONG position (you BUY `n_vega` units of the
+        `K_vega` option) -- a long position with delta `d` needs `-d` shares
+        to be delta-neutral, not `+d`. Getting this sign wrong does not
+        degrade the variance, it INCREASES it sharply (measured: a variance
+        ratio below 1 instead of clearly above) -- if your
+        `test_heston_delta_vega_reduit_la_variance` fails with a ratio well
+        below 1, check this sign first.
+        (2) "static" qualifies the QUANTITY `n_vega` (computed once, at
+        t=0), NOT the hedging instrument's delta -- its delta still varies
+        with S and tau like any BS delta, and must be rebalanced at every
+        date exactly like the target's. A "truly static" overlay (delta
+        never recomputed either) would let a residual delta run free and
+        would invalidate the comparison: the quest only tests the variance
+        reduction if the total delta stays correctly tracked at every step.
     """
     deltas_total = bs_delta_hedge_deltas(S, K, sigma_hedge, r, T, option)
     deltas_overlay = bs_delta_hedge_deltas(S, K_vega, sigma_hedge, r, T, option)

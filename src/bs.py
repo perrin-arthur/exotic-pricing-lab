@@ -79,34 +79,34 @@ def digital_call_bs(S0,K,sigma,r,T,q=0.0):
     -------
     float : discounted price.
 
-    QUÊTE 1.5 — digitales (réplication call spread) [30 XP]
-    OBJECTIF : pricer une digitale cash-or-nothing par DEUX routes
-        indépendantes -- une formule fermée ici, une réplication statique par
-        call spread juste en dessous (`digital_call_replication`) -- et
-        vérifier qu'elles convergent l'une vers l'autre.
-    DÉBLOQUE : rien d'autre dans l'Acte I ; ferme la dernière dette technique
-        du parcours.
-    VALIDATION : `tests/test_pricers.py::test_digital_call_bs_vs_mc` --
-        comparaison à une estimation Monte-Carlo de l'indicatrice
-        `1{S_T > K}` actualisée, dans l'IC 95% ; et
-        `test_digital_call_replication_converge_en_h2` -- l'écart entre cette
-        fonction et `digital_call_replication(h)` doit décroître en `O(h^2)`
-        quand `h` diminue, testé comme une PENTE (ratio de convergence), pas
-        comme un seuil sur une seule valeur de `h`.
-    INDICE 1 (intuition) : le payoff digital est une fonction en escalier
-        (0 puis 1, saut en `K`) -- exactement la dérivée, au signe près, du
-        payoff d'un call par rapport à SON STRIKE. `N(d2)` est cette dérivée,
-        actualisée.
-    INDICE 2 (structure) : `d2` est le MÊME `d2` que dans `call_bs`
-        (`d1 - sigma*sqrt(T)`) -- ne réécris pas `d1` à la main, on a déjà
-        toute la mécanique dans `call_bs`, cette fonction n'a besoin que du
-        dernier morceau.
-    INDICE 3 (formule) : `digital_call_bs = exp(-r*T) * N(d2)`, avec
-        `d1 = (log(S0/K) + (r - q + 0.5*sigma**2)*T) / (sigma*sqrt(T))` et
-        `d2 = d1 - sigma*sqrt(T)` -- identiques à ceux de `call_bs`.
-    PIÈGE : ne pas actualiser deux fois -- `N(d2)` est déjà une PROBABILITÉ
-        (risque-neutre), pas un prix ; c'est `exp(-r*T)` qui la transforme en
-        prix, une seule fois, comme partout ailleurs dans ce module.
+    QUEST 1.5 -- digitals (call-spread replication) [30 XP]
+    GOAL: price a cash-or-nothing digital through TWO independent routes --
+        a closed form here, and a static call-spread replication right below
+        (`digital_call_replication`) -- and check that they converge to each
+        other.
+    UNLOCKS: nothing else in Act I; closes the last piece of technical debt
+        on the roadmap.
+    VALIDATION: `tests/test_pricers.py::test_digital_call_bs_vs_mc` --
+        compared against a discounted Monte-Carlo estimate of the indicator
+        `1{S_T > K}`, within the 95% CI; and
+        `test_digital_call_replication_converge_en_h2` -- the gap between
+        this function and `digital_call_replication(h)` must shrink as
+        `O(h^2)` when `h` decreases, tested as a SLOPE (convergence ratio),
+        not as a threshold on a single value of `h`.
+    HINT 1 (intuition): the digital payoff is a step function (0 then 1,
+        jumping at `K`) -- exactly the derivative, up to sign, of a call's
+        payoff with respect to ITS OWN STRIKE. `N(d2)` is that derivative,
+        discounted.
+    HINT 2 (structure): `d2` is the SAME `d2` as in `call_bs`
+        (`d1 - sigma*sqrt(T)`) -- do not rewrite `d1` by hand, all the
+        machinery already lives in `call_bs`; this function only needs the
+        last piece.
+    HINT 3 (formula): `digital_call_bs = exp(-r*T) * N(d2)`, with
+        `d1 = (log(S0/K) + (r - q + 0.5*sigma**2)*T) / (sigma*sqrt(T))` and
+        `d2 = d1 - sigma*sqrt(T)` -- identical to the ones in `call_bs`.
+    PITFALL: do not discount twice -- `N(d2)` is already a (risk-neutral)
+        PROBABILITY, not a price; it is `exp(-r*T)` that turns it into a
+        price, once, exactly as everywhere else in this module.
     """
     d1= (np.log(S0/K)+(r-q+0.5*sigma**2)*T)/(sigma*np.sqrt(T))
     d2 = d1 -sigma*np.sqrt(T)
@@ -127,28 +127,28 @@ def digital_call_replication(S0,h,K,sigma,r,T,q=0.0):
     float : (call_bs(K-h) - call_bs(K+h)) / (2h), converging to
         `digital_call_bs` as h -> 0, error in O(h^2).
 
-    QUÊTE 1.5 (suite) — la réplication statique
-    OBJECTIF : construire le prix digital comme le construirait un desk sans
-        contrat digital coté -- un call spread très serré, normalisé par sa
-        largeur, plutôt qu'une formule fermée.
-    VALIDATION : voir `digital_call_bs` ci-dessus.
-    INDICE 1 (intuition) : être long un call K-h et court un call K+h, ça
-        reproduit une rampe qui monte de 0 à 1 entre K-h et K+h -- diviser
-        par la largeur `2h` normalise cette rampe à une hauteur de 1, comme le
-        vrai payoff digital, et la rampe se resserre en escalier quand
-        `h -> 0`.
-    INDICE 2 (structure) : exactement `delta`, mais le bump est sur `K`, pas
-        sur `S0` -- même différence finie centrée, même formule, un autre axe.
-    INDICE 3 (formule) : `(call_bs(S0,K-h,sigma,r,T,q) - call_bs(S0,K+h,sigma,r,T,q)) / (2*h)`.
-    PIÈGE : le signe -- le prix d'un call DÉCROÎT avec le strike (`dC/dK < 0`),
-        donc `C(K-h) > C(K+h)`, et c'est bien `(C(K-h) - C(K+h))/(2h)`, PAS
-        l'inverse, qui donne un nombre POSITIF. Deuxième piège, différent de
-        celui de `delta` : ici pas de bruit Monte-Carlo, mais un `h` trop
-        petit fait quand même dégénérer le calcul -- différence de deux
-        `call_bs` presque égaux divisée par un `h` minuscule, arrondi flottant
-        qui explose. Un `h` trop grand, à l'inverse, biaise (le spread n'est
-        plus assez raide pour approcher un escalier). Le bon ordre de
-        grandeur se mesure, il ne se devine pas.
+    QUEST 1.5 (continued) -- the static replication
+    GOAL: build the digital's price the way a desk would without a quoted
+        digital contract -- a very tight call spread, normalised by its
+        width, rather than a closed form.
+    VALIDATION: see `digital_call_bs` above.
+    HINT 1 (intuition): being long a call at K-h and short a call at K+h
+        reproduces a ramp rising from 0 to 1 between K-h and K+h -- dividing
+        by the width `2h` normalises that ramp to a height of 1, like the
+        true digital payoff, and the ramp tightens into a step as `h -> 0`.
+    HINT 2 (structure): exactly `delta`, but the bump sits on `K` instead of
+        `S0` -- same centred finite difference, same formula, a different
+        axis.
+    HINT 3 (formula): `(call_bs(S0,K-h,sigma,r,T,q) - call_bs(S0,K+h,sigma,r,T,q)) / (2*h)`.
+    PITFALL: the sign -- a call's price DECREASES with strike (`dC/dK < 0`),
+        so `C(K-h) > C(K+h)`, and it is indeed `(C(K-h) - C(K+h))/(2h)`, NOT
+        the other way round, that gives a POSITIVE number. Second pitfall,
+        different from `delta`'s: no Monte-Carlo noise here, but too small an
+        `h` still degenerates the computation -- the difference of two
+        nearly equal `call_bs` values divided by a tiny `h`, floating-point
+        rounding that blows up. Too large an `h`, conversely, biases the
+        result (the spread is no longer steep enough to approximate a step).
+        The right order of magnitude is measured, not guessed.
     """
     d1= (np.log(S0/K)+(r-q+0.5*sigma**2)*T)/(sigma*np.sqrt(T))
     d2 = d1 -sigma*np.sqrt(T)

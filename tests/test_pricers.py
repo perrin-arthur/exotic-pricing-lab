@@ -127,7 +127,7 @@ def test_di_do_van():
         di, _ = barriers.di_put(paths, K=100, H=H, r=0.05, T=1.0)
         do, _ = barriers.do_put(paths, K=100, H=H, r=0.05, T=1.0)
         print(f"H={H:3d}  DI={di:7.4f}  DO={do:7.4f}  "
-              f"DI/vanille={di/put_mc:6.1%}  ecart parite={abs(di+do-put_mc):.2e}")
+              f"DI/vanilla={di/put_mc:6.1%}  parity gap={abs(di+do-put_mc):.2e}")
         assert abs(di + do - put_mc) < 1e-12
 
     # Level: Monte-Carlo against analytics -> the tolerance is the CI. Outside
@@ -136,10 +136,10 @@ def test_di_do_van():
 
 
 def test_digital_call_bs_vs_mc():
-    """digital_call_bs contre une estimation Monte-Carlo indépendante.
+    """digital_call_bs against an independent Monte-Carlo estimate.
 
-    Référence : moyenne actualisée de l'indicatrice 1{S_T > K} sur des
-    trajectoires GBM à un pas -- rien à voir avec la formule fermée testée.
+    Reference: discounted mean of the indicator 1{S_T > K} on single-step
+    GBM paths -- unrelated to the closed form under test.
     """
     S0, K, sigma, r, T = 100.0, 100.0, 0.2, 0.05, 1.0
     N = 200_000
@@ -157,11 +157,11 @@ def test_digital_call_bs_vs_mc():
 
 
 def test_digital_call_replication_converge_en_h2():
-    """La réplication par call spread converge vers la formule fermée en O(h^2).
+    """The call-spread replication converges to the closed form as O(h^2).
 
-    Testé comme une PENTE (ratio de convergence quand h est divisé par 2),
-    pas comme un seuil sur une seule valeur de h -- une formule fausse rate le
-    taux de convergence, pas seulement le niveau.
+    Tested as a SLOPE (convergence ratio when h is halved), not as a
+    threshold on a single value of h -- a wrong formula misses the
+    convergence rate, not just the level.
     """
     S0, K, sigma, r, T = 100.0, 100.0, 0.2, 0.05, 1.0
     ref = digital_call_bs(S0, K, sigma, r, T)
@@ -170,9 +170,9 @@ def test_digital_call_replication_converge_en_h2():
     errors = [abs(digital_call_replication(S0, h, K, sigma, r, T) - ref) for h in hs]
 
     print("h:", hs)
-    print("erreurs:", errors)
+    print("errors:", errors)
 
     ratios = [errors[i] / errors[i + 1] for i in range(len(errors) - 1)]
-    print("ratios (attendu ~4, division par 2 de h -> erreur /4):", ratios)
+    print("ratios (expected ~4, halving h -> error /4):", ratios)
 
     assert all(3.0 < ratio < 5.0 for ratio in ratios)

@@ -1,138 +1,143 @@
 # PROGRESS — exotic-pricing-lab
 
-**XP : 1000 / 1000**  ·  Acte I **bouclé à 220/220** · Acte II **bouclé à
-230/230** · Acte III **bouclé à 210/210** · Acte IV **bouclé à 340/340**
+**XP: 1000 / 1000**  ·  Act I **closed at 220/220** · Act II **closed at
+230/230** · Act III **closed at 210/210** · Act IV **closed at 340/340**
 
-> **TOUT L'ARBRE ACTUEL EST BOUCLÉ.** 1.5 (digitales) a comblé le dernier trou
-> de l'Acte I ; l'Acte IV (hedging discret) est clos avec son BOSS 4. Prochaine
-> étape : l'acte suivant, mis de côté quand l'Acte IV est passé devant lui à la
-> demande explicite du prompt qui l'a ouvert — multi-actif par Cholesky →
-> worst-of → autocall → BRC worst-of sous Heston, le produit phare annoncé en
-> tête de `CLAUDE.md`.
+> **THE WHOLE CURRENT TREE IS CLOSED.** 1.5 (digitals) filled the last gap of
+> Act I; Act IV (discrete hedging) is closed with its BOSS 4. Next step: the
+> following act, set aside when Act IV jumped the queue at the explicit
+> request of the prompt that opened it — multi-asset via Cholesky →
+> worst-of → autocall → BRC worst-of under Heston, the flagship product
+> announced at the top of `CLAUDE.md`.
 
-> Suite au vert : **62 passed, 0 xfailed** (48 + 12 tests de l'Acte IV + 2 de
-> la quête 1.5).
+> Green suite: **62 passed, 0 xfailed** (48 + 12 tests from Act IV + 2 from
+> quest 1.5).
 
-Règle du jeu : une quête n'est acquise que si son test de validation est **vert**
-contre une référence indépendante (formule fermée, parité, identité model-free).
-Les tests de l'Acte II sont écrits en `xfail(strict=True)` : quand ton code est
-juste, le test passe en XPASS et fait échouer la suite — c'est le signal pour
-retirer le marqueur. Retirer le marqueur avant d'avoir codé ne trompe personne.
+Rule of the game: a quest is only earned once its validation test is
+**green** against an independent reference (closed form, parity, model-free
+identity). Act II's tests are written as `xfail(strict=True)`: once your code
+is correct, the test flips to XPASS and fails the suite — that is the signal
+to remove the marker. Removing the marker before writing the code fools no
+one.
 
 ---
 
-## ACTE I — Fondations (220 / 220 XP) ✅
+## ACT I — Foundations (220 / 220 XP) ✅
 
-| Quête | Statut | XP | Dépend de | Validation |
+| Quest | Status | XP | Depends on | Validation |
 |---|---|---|---|---|
-| 1.1 Black-Scholes fermé (call/put, q, delta, vega) | ✅ | 20/20 | — | `test_bs_reference_value`, `test_call_bs_dividende`, `test_put_call_parity_bs` |
-| 1.2 Pricer MC un-pas + IC 95% | ✅ | 20/20 | 1.1 | `test_mc_within_ci` |
-| 1.3 Antithétiques (un-pas) | ✅ | 20/20 | 1.2 | variance ÷ 2 mesurée |
-| 1.4 Delta MC en common random numbers | ✅ | 30/30 | 1.2 | `test_delta_crn` vs N(d1) |
-| 1.5 Digitales (réplication call spread) | ✅ | 30/30 | 1.1 | `test_digital_call_bs_vs_mc` (IC) + `test_digital_call_replication_converge_en_h2` (ratio ~4.000) |
-| 1.6 `gbm_paths` multi-pas (cumsum vectorisé) | ✅ | 30/30 | 1.2 | `test_gbm_paths_shape_et_depart`, `_call_europeen`, `_loi_independante_de_n_steps` |
-| 1.7 Barrières DI / DO put + parité pathwise | ✅ | 40/40 | 1.6 | `test_di_do_van` (DI + DO = vanille, 1e-12) |
-| 1.8 Vol implicite (Newton, seed Manaster-Koenig) | ✅ | 30/30 | 1.1 | `test_implied_vol_call` (tolérance vega-dépendante) |
+| 1.1 Closed-form Black-Scholes (call/put, q, delta, vega) | ✅ | 20/20 | — | `test_bs_reference_value`, `test_call_bs_dividende`, `test_put_call_parity_bs` |
+| 1.2 Single-step MC pricer + 95% CI | ✅ | 20/20 | 1.1 | `test_mc_within_ci` |
+| 1.3 Antithetic variates (single-step) | ✅ | 20/20 | 1.2 | measured variance ÷ 2 |
+| 1.4 Delta MC under common random numbers | ✅ | 30/30 | 1.2 | `test_delta_crn` vs N(d1) |
+| 1.5 Digitals (call-spread replication) | ✅ | 30/30 | 1.1 | `test_digital_call_bs_vs_mc` (CI) + `test_digital_call_replication_converge_en_h2` (ratio ~4.000) |
+| 1.6 Multi-step `gbm_paths` (vectorised cumsum) | ✅ | 30/30 | 1.2 | `test_gbm_paths_shape_et_depart`, `_call_europeen`, `_loi_independante_de_n_steps` |
+| 1.7 DI / DO put barriers + pathwise parity | ✅ | 40/40 | 1.6 | `test_di_do_van` (DI + DO = vanilla, 1e-12) |
+| 1.8 Implied vol (Newton, Manaster-Koenig seed) | ✅ | 30/30 | 1.1 | `test_implied_vol_call` (vega-dependent tolerance) |
 
-### Séance 8 — la 1.5
+### Session 8 — quest 1.5
 
-Call spread `(C(K-h) - C(K+h))/(2h)` contre `digital_call_bs` : ratio de
-convergence mesuré **3.999 / 3.9998 / 4.000** en divisant `h` par 2 à chaque
-fois (0.4 → 0.2 → 0.1 → 0.05) — O(h²) exact, à trois décimales de 4. Contre la
-formule fermée elle-même, `digital_call_bs` vs MC (N=200 000) :
-`0.53232` contre `0.53256 ± 0.00207`, dans l'IC.
+Call spread `(C(K-h) - C(K+h))/(2h)` against `digital_call_bs`: measured
+convergence ratio **3.999 / 3.9998 / 4.000** each time `h` is halved
+(0.4 → 0.2 → 0.1 → 0.05) — exact O(h²), to three decimal places of 4.
+Against the closed form itself, `digital_call_bs` vs MC (N=200,000):
+`0.53232` against `0.53256 ± 0.00207`, inside the CI.
 
-Restent en dette technique, non scorées : monitoring discret (prix vs `n_steps`,
-Broadie-Glasserman-Kou) et delta près de la barrière — les deux étaient au
-programme du TP barrières et n'ont pas été faits.
+Remaining technical debt, unscored: discrete monitoring (price vs `n_steps`,
+Broadie-Glasserman-Kou) and delta near a barrier — both were on the barrier
+lab's syllabus and were never done.
 
-## ACTE II — Réduction de variance (230 / 230 XP) ✅
+## ACT II — Variance reduction (230 / 230 XP) ✅
 
-| Quête | Statut | XP | Dépend de | Validation |
+| Quest | Status | XP | Depends on | Validation |
 |---|---|---|---|---|
-| 2.1 `control_variate(Y, X, EX, c=None)` générique | ✅ | 30/30 | 1.2 | `pytest -k test_cv_` — 7 XPASS |
-| 2.2 Cas dégénéré Y = X = put vanille (boss de tuto) | ✅ | 20/20 | 2.1 | `test_cv_degenere_Y_egal_X` — prix BS exact à 1e-12 |
-| 2.3 Branchement sur le DI put | ✅ | 40/40 | 2.1, 1.7 | `pytest -k di_put` — 4 XPASS |
-| 2.4a `gbm_paths_antithetic` multi-pas | ✅ | 20/20 | 1.6 | `test_gbm_paths_antithetic_partage_Z` |
-| 2.4b Antithétiques × contrôle (paires D'ABORD) | ✅ | 20/20 | 2.4a, 2.1 | `pytest -k antithetic` — 2 XPASS |
-| 2.5 `pilot_c` — c figé sur run pilote | ✅ | 20/20 | 2.3 | `pytest -k pilot` — 3 XPASS |
-| **BOSS 2** Balayage barrière 60 % → 95 % + figure | ✅ | 80/80 | 2.3, 2.5 | `test_boss2_artefacts` — XPASS |
+| 2.1 Generic `control_variate(Y, X, EX, c=None)` | ✅ | 30/30 | 1.2 | `pytest -k test_cv_` — 7 XPASS |
+| 2.2 Degenerate case Y = X = vanilla put (tutorial boss) | ✅ | 20/20 | 2.1 | `test_cv_degenere_Y_egal_X` — exact BS price to 1e-12 |
+| 2.3 Wiring into the DI put | ✅ | 40/40 | 2.1, 1.7 | `pytest -k di_put` — 4 XPASS |
+| 2.4a Multi-step `gbm_paths_antithetic` | ✅ | 20/20 | 1.6 | `test_gbm_paths_antithetic_partage_Z` |
+| 2.4b Antithetics × control (pair FIRST) | ✅ | 20/20 | 2.4a, 2.1 | `pytest -k antithetic` — 2 XPASS |
+| 2.5 `pilot_c` — c fixed from a pilot run | ✅ | 20/20 | 2.3 | `pytest -k pilot` — 3 XPASS |
+| **BOSS 2** Barrier sweep 60% → 95% + figure | ✅ | 80/80 | 2.3, 2.5 | `test_boss2_artefacts` — XPASS |
 
-Où se trouve chaque bloc TODO :
-`scripts/boss2_barrier_sweep.py` → BOSS 2. `src/mc_engine.py` : plus rien pour l'Acte II.
+Where each TODO block lives:
+`scripts/boss2_barrier_sweep.py` → BOSS 2. `src/mc_engine.py`: nothing left
+for Act II.
 
-### Séance 5 — mesures de la 2.5 (`pytest -k pilot`)
+### Session 5 — measurements for 2.5 (`pytest -k pilot`)
 
-DI put H=90, S0=100, K=100, r=0.05, σ=0.20, T=1, n_steps=20 :
+DI put H=90, S0=100, K=100, r=0.05, σ=0.20, T=1, n_steps=20:
 
-    c_pilote (10 000 chemins) = 1.0013     c_plein (100 000) = 1.0003
-    ref brut = 5.29734 +/- 0.03840         moyenne CV (c figé) = 5.27146 +/- 0.00391
+    pilot c (10,000 paths) = 1.0013     full c (100,000) = 1.0003
+    raw ref = 5.29734 +/- 0.03840        mean CV (fixed c) = 5.27146 +/- 0.00391
 
-`c ≈ 1` car à H=90 le DI put est presque le put vanille. Le pilote 10× plus
-court donne `c` à **0,1 %** — démonstration empirique que la variance est
-**plate** autour de `c*` : un `c` grossier ne coûte qu'une fraction du gain,
-jamais du biais. Demi-largeur 10× plus serrée, et cette fois avec un `c`
-**déterministe** vis-à-vis de l'échantillon final, donc `E[c(X̄−EX)] = 0`
-exactement — le biais en O(1/N) de la 2.1 a disparu.
+`c ≈ 1` because at H=90 the DI put is nearly the vanilla put. The pilot,
+10× shorter, gives `c` to within **0.1%** — empirical demonstration that the
+variance is **flat** around `c*`: a coarse `c` only costs a fraction of the
+gain, never a bias. Half-width 10× tighter, and this time with a
+**deterministic** `c` with respect to the final sample, so
+`E[c(X̄−EX)] = 0` exactly — the O(1/N) bias from 2.1 has vanished.
 
-Réponse d'entretien : « vous estimez c sur le même échantillon que le prix, où
-est le problème ? » → `ĉ` et `X̄` sont corrélés, donc `E[ĉ(X̄−EX)] ≠ 0` : biais
-en O(1/N), négligeable devant l'erreur MC en O(1/√N) — mais un desk qui produit
-un mark quotidien sur le même générateur voit un décalage systématique, pas un
-bruit qui se moyenne.
+Interview answer: "you estimate c on the same sample as the price, what's
+the problem?" → `ĉ` and `X̄` are correlated, so `E[ĉ(X̄−EX)] ≠ 0`: a bias in
+O(1/N), negligible compared to the O(1/√N) MC error — but a desk producing a
+daily mark on the same generator sees a systematic shift, not noise that
+averages out.
 
-### Séance 5 — mesures de la 2.4 (`test_cv_antithetic_domine_chaque_technique_seule`)
+### Session 5 — measurements for 2.4 (`test_cv_antithetic_domine_chaque_technique_seule`)
 
-Put vanille S0=K=100, r=0.05, σ=0.20, T=1, n_steps=25, budget **2N = 50 000
-trajectoires pour les quatre estimateurs** (comparer à budget différent ne veut
-rien dire). Contrôle = forward actualisé, E[e^{-rT} S_T] = S0 exactement.
+Vanilla put S0=K=100, r=0.05, σ=0.20, T=1, n_steps=25, budget **2N = 50,000
+paths for all four estimators** (comparing at a different budget would be
+meaningless). Control = discounted forward, E[e^{-rT} S_T] = S0 exactly.
 
-| Estimateur | demi-IC | gain **variance** |
+| Estimator | half-CI | **variance** gain |
 |---|---:|---:|
-| brut | 0.07575 | 1× |
-| AV seul | 0.05783 | 1.72× |
-| CV seul | 0.04939 | 2.35× |
+| raw | 0.07575 | 1× |
+| AV alone | 0.05783 | 1.72× |
+| CV alone | 0.04939 | 2.35× |
 | AV + CV | 0.02372 | **10.2×** |
 
-Corrélations mesurées : ρ(Y_up, Y_down) = **−0.416** → gain AV = 2/(1+ρ) = 1.71
-(le facteur 2 supposerait ρ = 0 ; on fait mieux car le put est monotone en Z).
-ρ(put, fwd) = **−0.758** → gain CV = 1/(1−ρ²) = 2.35.
+Measured correlations: ρ(Y_up, Y_down) = **−0.416** → AV gain = 2/(1+ρ) = 1.71
+(the factor of 2 would assume ρ = 0; it does better because the put is
+monotonic in Z). ρ(put, fwd) = **−0.758** → CV gain = 1/(1−ρ²) = 2.35.
 
-Le point non trivial : 1.72 × 2.35 = 4.0, or on mesure **10.2**. Après pairage,
-ρ(put, fwd) passe de −0.758 à **+0.912** — la moyenne par paire est une fonction
-**paire** de Z, donc put pairé et forward pairé croissent tous deux en |Z| et
-deviennent quasi colinéaires. L'AV n'a pas seulement réduit la variance : elle a
-**amélioré le contrôle**. Ne pas généraliser (propre à ce couple), mais c'est la
-remarque à placer en entretien.
+The non-trivial point: 1.72 × 2.35 = 4.0, yet the measurement is **10.2**.
+After pairing, ρ(put, fwd) goes from −0.758 to **+0.912** — the per-pair
+average is an **even** function of Z, so the paired put and paired forward
+both grow with |Z| and become nearly collinear. AV did not just reduce
+variance: it **improved the control**. Not to be generalised (specific to
+this pair), but the remark to make in an interview.
 
-Asymétrie AV / CV à savoir énoncer : un CV mal choisi ne dégrade jamais (c* → 0),
-un AV mal choisi **dégrade** — payoff non monotone en Z (straddle) → ρ > 0 → la
-variance monte à budget égal.
+An asymmetry between AV and CV worth stating: a poorly chosen CV never
+degrades (c* → 0), a poorly chosen AV can **degrade** things — a
+non-monotonic payoff in Z (straddle) → ρ > 0 → variance rises at an equal
+budget.
 
-### Séance 4 — mesures de la 2.3 (`scripts/run_s4.py`)
+### Session 4 — measurements for 2.3 (`scripts/run_s4.py`)
 
-S0=100, K=100, T=1, r=0.02, σ=0.30, n_steps=252, N=100 000, seed=20240904 :
+S0=100, K=100, T=1, r=0.02, σ=0.30, n_steps=252, N=100,000, seed=20240904:
 
-|       H | Prix MC | demi-IC | Prix CV | demi-IC | rho_hat | gain IC | parité KI+KO−van |
+|       H | MC price | half-CI | CV price | half-CI | rho_hat | CI gain | KI+KO−van parity |
 |--------:|--------:|--------:|--------:|--------:|--------:|--------:|-----------------:|
 | 65.0000 |  5.5295 |  0.0833 |  5.4965 |  0.0500 |  0.7998 | 1.6658× |       3.5527e-15 |
 | 85.0000 | 10.5477 |  0.0880 | 10.5044 |  0.0100 |  0.9936 | 8.8272× |       3.5527e-15 |
 
-Le gain vaut `1/√(1−ρ²)` : 1.667 attendu / 1.666 mesuré à ρ=0.80, 8.90 / 8.83 à
-ρ=0.9936. ρ mesure la fraction de chemins où le DI put **coïncide** avec son
-contrôle : à H=85 (≈0.5·σ√T sous le spot en log) presque tous les chemins dans
-la monnaie ont touché, le contrôle explique 99 % de la variance ; à H=65
-(≈1.4·σ√T) l'indicatrice découple les deux payoffs. Relation **non linéaire** —
-un contrôle « correct » ne paie presque rien, seul un contrôle quasi parfait
-paie. Corollaire vérifié à H=60 : un mauvais contrôle ne dégrade jamais (c*→0).
+The gain equals `1/√(1−ρ²)`: 1.667 expected / 1.666 measured at ρ=0.80, 8.90
+/ 8.83 at ρ=0.9936. ρ measures the fraction of paths where the DI put
+**coincides** with its control: at H=85 (~0.5·σ√T below spot in log terms)
+almost every in-the-money path has triggered, the control explains 99% of
+the variance; at H=65 (~1.4·σ√T) the indicator decouples the two payoffs. A
+**non-linear** relationship — a "correct" control barely pays off, only a
+near-perfect control does. Corollary verified at H=60: a bad control never
+degrades things (c*→0).
 
-### BOSS 2 — le balayage (`scripts/boss2_barrier_sweep.py`)
+### BOSS 2 — the sweep (`scripts/boss2_barrier_sweep.py`)
 
-S0=100, K=100, σ=0.20, r=0.05, T=1, n_steps=50, N=100 000, seed=42, **un seul
-jeu de trajectoires pour les 8 barrières** (CRN : sinon ρ(H) tremble du bruit MC
-et on ne sait plus si un creux est un effet ou un artefact).
+S0=100, K=100, σ=0.20, r=0.05, T=1, n_steps=50, N=100,000, seed=42, **a
+single set of paths for all 8 barriers** (CRN: otherwise ρ(H) would shake
+with MC noise and it would be impossible to tell whether a dip is a real
+effect or an artefact).
 
-| H/S0 | ρ | ratio demi-IC | c_hat | prix MC | prix CV |
+| H/S0 | ρ | half-CI ratio | c_hat | MC price | CV price |
 |---:|---:|---:|---:|---:|---:|
 | 0.60 | 0.2989 | 0.9543 | 0.1035 | 0.2296 | 0.2346 |
 | 0.70 | 0.6211 | 0.7838 | 0.4502 | 1.3391 | 1.3605 |
@@ -140,125 +145,129 @@ et on ne sait plus si un creux est un effet ou un artefact).
 | 0.90 | 0.9918 | 0.1279 | 1.0003 | 5.2880 | 5.3355 |
 | 0.95 | 0.9995 | 0.0303 | 1.0009 | 5.5017 | 5.5493 |
 
-Gain de 33× sur la demi-largeur au point haut, soit **1000× en variance**.
-`c_hat` monte de 0.10 à 1.00 : à H=95 % le DI put **est** le put vanille. À
-H=60 % le déclenchement est rare, `c` s'effondre vers 0 et l'estimateur se
-replie tout seul sur le MC brut — **c'est pourquoi le ratio ne dépasse jamais
-1**. Réponse à « et si votre contrôle est mal choisi ? ».
+A 33× gain on the half-width at the top point, i.e. **1000× in variance**.
+`c_hat` climbs from 0.10 to 1.00: at H=95% the DI put **is** the vanilla
+put. At H=60% the trigger is rare, `c` collapses towards 0 and the estimator
+folds back on its own onto the raw MC — **which is why the ratio never
+exceeds 1**. The answer to "and if your control is poorly chosen?".
 
-`prix_cv − prix_mc ≈ +0.047` partout, **proportionnel à `c_hat`** : c'est
-`c·(X̄−EX)`, la correction mesurée sur ce jeu de chemins. Un écart *non*
-proportionnel à `c` signalerait un bug.
+`price_cv − price_mc ≈ +0.047` everywhere, **proportional to `c_hat`**: this
+is `c·(X̄−EX)`, the correction measured on this set of paths. A gap that is
+*not* proportional to `c` would signal a bug.
 
-**Limite de la figure, à savoir énoncer (trouvée par Arthur, pas par le test).**
-La courbe « théorique » √(1−ρ̂²) n'est **pas** une validation indépendante :
-avec `c = Cov/Var` estimé sur l'échantillon, `Var(Z) = Var(Y)(1−ρ̂²)`
-identiquement, donc ratio = √(1−ρ̂²) **par algèbre**. Écart mesuré aux 8
-points : **1e-15**, la précision machine. Ce que ça teste réellement :
-la cohérence interne (mêmes `ddof` entre `cov`, `var` et `std`, demi-largeur
-calculée sur le résidu et pas sur Y, même `n` des deux côtés). Une vraie
-référence externe demanderait la formule fermée de Reiner-Rubinstein — qui
-suppose un monitoring **continu**, alors qu'on monitore en 50 pas (dette
-technique Broadie-Glasserman-Kou). Présenter une tautologie comme une
-validation est le genre de chose qui coûte cher si l'examinateur pousse.
+**A limit of the figure, worth stating (found by Arthur, not by the test).**
+The "theoretical" curve √(1−ρ̂²) is **not** an independent validation: with
+`c = Cov/Var` estimated on the sample, `Var(Z) = Var(Y)(1−ρ̂²)` holds
+identically, so ratio = √(1−ρ̂²) **by algebra**. Measured gap at the 8
+points: **1e-15**, machine precision. What this actually tests: internal
+consistency (same `ddof` between `cov`, `var` and `std`, half-width computed
+on the residual and not on Y, same `n` on both sides). A genuine external
+reference would require Reiner-Rubinstein's closed form — which assumes
+**continuous** monitoring, while the monitoring here happens over 50 steps
+(the Broadie-Glasserman-Kou technical debt). Presenting a tautology as a
+validation is the kind of thing that gets expensive if an examiner pushes
+back.
 
-## ACTE III — Heston mono-actif (210 / 210 XP) ✅
+## ACT III — Single-asset Heston (210 / 210 XP) ✅
 
-🔓 **OUVERT.** Blocs TODO dans `src/heston.py`, tests dans `tests/test_heston.py`
-(16 xfailed à l'ouverture), boss dans `scripts/boss3_heston_barrier.py`.
+🔓 **OPENED.** TODO blocks in `src/heston.py`, tests in `tests/test_heston.py`
+(16 xfailed at opening), boss in `scripts/boss3_heston_barrier.py`.
 
-| Quête | Statut | XP | Dépend de | Validation |
+| Quest | Status | XP | Depends on | Validation |
 |---|---|---|---|---|
-| 3.1 `heston_paths` — Euler, 2 browniens corrélés | ✅ | 40/40 | 1.6 | `pytest -k paths` — 5 XPASS |
-| 3.2 `heston_cf` / `heston_call` / `heston_put` — semi-analytique | ✅ | 50/50 | 3.1 | 6 XPASS : limite BS, parité, accord MC |
-| 3.3 `heston_smile` — vol implicite par strike | ✅ | 40/40 | 3.2, 1.8 | `pytest -k smile` — 4 XPASS |
-| **BOSS 3** DI put sous Heston + CV + figure smile | ✅ | 80/80 | 3.3, Acte II | `test_boss3_artefacts` — XPASS |
+| 3.1 `heston_paths` — Euler, 2 correlated Brownians | ✅ | 40/40 | 1.6 | `pytest -k paths` — 5 XPASS |
+| 3.2 `heston_cf` / `heston_call` / `heston_put` — semi-analytical | ✅ | 50/50 | 3.1 | 6 XPASS: BS limit, parity, MC agreement |
+| 3.3 `heston_smile` — implied vol by strike | ✅ | 40/40 | 3.2, 1.8 | `pytest -k smile` — 4 XPASS |
+| **BOSS 3** DI put under Heston + CV + smile figure | ✅ | 80/80 | 3.3, Act II | `test_boss3_artefacts` — XPASS |
 
-Le fil de l'acte : **simuler** (3.1) → se donner une **référence analytique**
-(3.2) → **lire** ce que le modèle produit (3.3) → **rebrancher l'Acte II
-dessus** (BOSS 3). Chaque validation est indépendante du modèle : martingale
-`E[e^{-rT}S_T]=S0`, moyenne exacte du CIR, limite dégénérée ξ→0 vers
-Black-Scholes, parité call-put. Aucun test ne compare Heston à Heston.
+The act's thread: **simulate** (3.1) → build an **analytical reference**
+(3.2) → **read** what the model produces (3.3) → **plug Act II back in on
+top** (BOSS 3). Every validation is model-independent: the martingale
+identity `E[e^{-rT}S_T]=S0`, the CIR's exact mean, the degenerate limit
+ξ→0 towards Black-Scholes, call-put parity. No test compares Heston against
+Heston.
 
-### Séance 6 — la 3.1
+### Session 6 — quest 3.1
 
-`E[v_T]` attendu 0.051157 / mesuré 0.050911 (0,5 %), `ρ` imposé −0.7 / mesuré
-−0.6986. Martingale et limite BS dans l'IC.
+`E[v_T]` expected 0.051157 / measured 0.050911 (0.5%), imposed `ρ` −0.7 /
+measured −0.6986. Martingale and BS limit inside the CI.
 
-**Décision de schéma à assumer.** Le tableau `v` rendu est une *sortie* : une
-variance négative y serait un `nan` en attente au premier `sqrt` en aval. D'où
-la séparation état interne / sortie rapportée (vecteur de travail `v_brut`,
-écriture tronquée dans le tableau). Attention au détail qui change le schéma :
-si la récursion relit la valeur **tronquée**, ce n'est plus la full truncation
-mais le schéma **absorbé** — la full truncation garde la mémoire de l'excursion
-négative, l'absorbé la remet à zéro. Écart mesuré ici : 1e-5 relatif, parce que
-Feller tient (2κθ = 0.12 > 0.09 = ξ²). **Sur des paramètres calibrés au marché,
-Feller est presque toujours violée** et l'écart devient visible. Lord, Koekkoek
-& van Dijk (2010) : la full truncation est la variante d'Euler la moins biaisée.
+**A scheme decision to own.** The returned `v` array is an *output*: a
+negative variance in it would be a `nan` waiting at the first `sqrt`
+downstream. Hence the split between internal state and reported output
+(working vector `v_raw`, truncated value written into the array). Watch the
+detail that changes the scheme: if the recursion reads back the
+**truncated** value, this is no longer full truncation but the **absorbed**
+scheme — full truncation keeps the memory of the negative excursion, the
+absorbed variant resets it to zero. Measured gap here: 1e-5 relative,
+because Feller holds (2κθ = 0.12 > 0.09 = ξ²). **On market-calibrated
+parameters, Feller is almost always violated** and the gap becomes visible.
+Lord, Koekkoek & van Dijk (2010): full truncation is the least biased Euler
+variant.
 
-### Séance 6 — la 3.2
+### Session 6 — quest 3.2
 
-Route retenue : Heston 1993 / Gatheral, `P1`/`P2` par `scipy.integrate.quad`,
-forme d'Albrecher pour la fonction caractéristique (pas de saut de branche).
+Route chosen: Heston 1993 / Gatheral, `P1`/`P2` via `scipy.integrate.quad`,
+Albrecher's form for the characteristic function (no branch jump).
 
-| K | Heston | BS(20 %) | lecture |
+| K | Heston | BS(20%) | reading |
 |---:|---:|---:|---|
-| 80 | 25.095 | 24.589 | strikes bas **plus chers** |
-| 100 | 10.362 | 10.451 | ATM à peu près aligné |
-| 120 | 2.193 | 3.247 | calls OTM **un tiers moins chers** |
+| 80 | 25.095 | 24.589 | low strikes **more expensive** |
+| 100 | 10.362 | 10.451 | ATM roughly aligned |
+| 120 | 2.193 | 3.247 | OTM calls **a third cheaper** |
 
-Le skew de ρ = −0.7, visible avant même d'avoir écrit 3.3.
+The ρ = −0.7 skew, visible even before writing 3.3.
 
-**Accord semi-analytique / MC** (N=200 000, n_steps=250) :
-`K=90 : MC 17.0984±0.0644 vs exact 17.1069` · `K=100 : 10.3505±0.0523 vs 10.3619`
-· `K=110 : 5.3053±0.0380 vs 5.3180`. Dans l'IC, mais **l'exact est au-dessus aux
-trois strikes, de ~0.012 à chaque fois**. Trois fois le même signe = biais de
-discrétisation d'Euler, pas du bruit. Vérifiable : doubler `n_steps` doit
-diviser l'écart par ~2 (Euler est en O(dt)).
+**Semi-analytical / MC agreement** (N=200,000, n_steps=250):
+`K=90: MC 17.0984±0.0644 vs exact 17.1069` · `K=100: 10.3505±0.0523 vs 10.3619`
+· `K=110: 5.3053±0.0380 vs 5.3180`. Inside the CI, but **the exact value sits
+above at all three strikes, by ~0.012 each time**. The same sign three times
+= an Euler discretisation bias, not noise. Verifiable: doubling `n_steps`
+must halve the gap (Euler is O(dt)).
 
-**Correction d'un test faux (le mien).** `test_heston_cf_limite_gaussienne`
-exigeait 1e-6 à ξ=1e-3 : impossible, l'écart réel y vaut 3.5e-4. L'écart à la
-gaussienne est en **O(ξ)**, pas O(ξ²) — le terme de skew `ρ·ξ·u³` est d'ordre
-UN, c'est la corrélation qui brise la symétrie (la courbure, elle, est en ξ²).
-Mesuré : 3.48e-3 → 3.48e-4 → 3.48e-5 pour ξ = 1e-2, 1e-3, 1e-4, et scaling en
-u³ à ξ fixé. Sous ξ ≈ 1e-5 l'erreur **remonte** (annulation catastrophique via
-`κθ/ξ²`). Le test vérifie désormais un **ratio de convergence** (facteur 10
-mesuré : 10.00) plutôt qu'un seuil — une formule fausse rate la pente, pas
-seulement le niveau.
+**Fixing a wrong test (my own).** `test_heston_cf_limite_gaussienne` demanded
+1e-6 at ξ=1e-3: impossible, the real gap there is 3.5e-4. The departure from
+the gaussian is O(ξ), not O(ξ²) — the skew term `ρ·ξ·u³` is first order,
+since it is the correlation that breaks the symmetry (curvature, meanwhile,
+is O(ξ²)). Measured: 3.48e-3 → 3.48e-4 → 3.48e-5 for ξ = 1e-2, 1e-3, 1e-4,
+and scaling in u³ at fixed ξ. Below ξ ≈ 1e-5 the error **rises again**
+(catastrophic cancellation via `κθ/ξ²`). The test now checks a
+**convergence ratio** (measured factor of 10: 10.00) rather than a
+threshold — a wrong formula misses the slope, not just the level.
 
-### Séance 6 — la 3.3 : ρ fait la pente, ξ fait la courbure
+### Session 6 — quest 3.3: ρ drives the slope, ξ drives the curvature
 
-Smile à ρ=−0.7, K de 80 à 120 (S0=100, F=105.13, T=1) :
+Smile at ρ=−0.7, K from 80 to 120 (S0=100, F=105.13, T=1):
 `0.2326 0.2235 0.2147 0.2061 0.1976 0.1895 0.1817 0.1744 0.1678`
-Pente ajustée en log-moneyness : **−0.1613** — un skew d'indice actions
-réaliste à 1 an. Vol ATM 19.76 % contre √θ = 20 % (le forward est au-dessus
-du spot).
+Fitted slope in log-moneyness: **−0.1613** — a realistic 1-year equity-index
+skew. ATM vol 19.76% against √θ = 20% (the forward sits above spot).
 
-Courbure (différence seconde en log-moneyness, ρ=0 pour isoler ξ) :
+Curvature (second difference in log-moneyness, ρ=0 to isolate ξ):
 
-| ξ | courbure | ratio vs ξ=0.1 | ξ² attendu |
+| ξ | curvature | ratio vs ξ=0.1 | expected ξ² |
 |---:|---:|---:|---:|
 | 0.1 | 0.00088 | 1 | 1 |
 | 0.2 | 0.00353 | 4.01 | 4 |
 | 0.3 | 0.00781 | 8.9 | 9 |
 | 0.5 | 0.01952 | 22.2 | 25 (saturation) |
 
-**Courbure ∝ ξ² à trois chiffres significatifs.** Deux mesures indépendantes
-concordent : la fonction caractéristique donnait un terme de skew `ρ·ξ·u³`
-d'ordre UN (séance 6, 3.2), la surface de vol donne une courbure d'ordre DEUX.
+**Curvature ∝ ξ² to three significant figures.** Two independent
+measurements agree: the characteristic function gave a first-order skew term
+`ρ·ξ·u³` (session 6, 3.2), the vol surface gives a second-order curvature.
 
-Traduction desk : ρ pilote le **risk reversal** (linéairement), ξ pilote le
-**butterfly** (quadratiquement). Et c'est le risk reversal qui décide du prix
-d'un BRC, parce que le down-and-in put vendu par l'investisseur vit dans l'aile
-gauche — là où le skew rend la vol chère. D'où « pourquoi Heston et pas BS ».
+Desk translation: ρ drives the **risk reversal** (linearly), ξ drives the
+**butterfly** (quadratically). And it is the risk reversal that decides a
+BRC's price, because the down-and-in put sold by the investor lives in the
+left wing — exactly where the skew makes vol expensive. Hence "why Heston
+and not BS".
 
-### BOSS 3 — le DI put sous Heston (`scripts/boss3_heston_barrier.py`)
+### BOSS 3 — the DI put under Heston (`scripts/boss3_heston_barrier.py`)
 
 S0=K=100, v0=0.04, κ=1.5, θ=0.04, ξ=0.3, ρ=−0.7, r=0.05, T=1, n_steps=50,
-N=100 000, seed=42, **une seule simulation pour les 20 barrières** (CRN).
-Contrôle = put vanille sur les mêmes trajectoires, `EX = heston_put` (3.2).
+N=100,000, seed=42, **a single simulation for all 20 barriers** (CRN).
+Control = vanilla put on the same paths, `EX = heston_put` (3.2).
 
-| H/S0 | ρ(payoff, contrôle) | ratio demi-IC | c_hat | prix MC | prix CV |
+| H/S0 | ρ(payoff, control) | half-CI ratio | c_hat | MC price | CV price |
 |---:|---:|---:|---:|---:|---:|
 | 0.60 | 0.6390 | 0.7692 | 0.4557 | 1.3064 | 1.2966 |
 | 0.70 | 0.8267 | 0.5626 | 0.7501 | 2.7142 | 2.6980 |
@@ -266,142 +275,143 @@ Contrôle = put vanille sur les mêmes trajectoires, `EX = heston_put` (3.2).
 | 0.90 | 0.9960 | 0.0894 | 1.0003 | 5.3445 | 5.3229 |
 | 0.95 | 0.9997 | 0.0229 | 1.0005 | 5.4864 | 5.4648 |
 
-Gain de **44× sur la demi-largeur** au point haut (~1900× en variance).
+A **44×** gain on the half-width at the top point (~1900× in variance).
 
-Trois lectures :
+Three readings:
 
-1. **`c_hat` démarre à 0.46**, contre 0.10 en Black-Scholes au BOSS 2. Sous
-   Heston le DI put ressemble davantage au put vanille dès H=60 % : le skew
-   épaissit l'aile gauche, donc les trajectoires qui finissent dans la monnaie
-   ont plus souvent touché une barrière basse.
-2. **`prix_cv − prix_mc = −0.0216·c_hat`**, exactement proportionnel à `c_hat`
-   → le contrôle est centré, `EX` est cohérent avec les trajectoires. Le piège
-   « EX en BS sur des trajectoires Heston » a été évité.
-3. **`heston_put`(ATM) = 5.4848 contre `put_bs`(20 %) = 5.5735**, soit −0.089 :
-   ce que le smile coûte sur un vanille ATM. Petit. Sur un DI put à barrière
-   basse l'écart de modèle est bien plus gros — c'est l'argument « pourquoi
-   Heston et pas BS » pour un BRC.
+1. **`c_hat` starts at 0.46**, against 0.10 under Black-Scholes at BOSS 2.
+   Under Heston the DI put resembles the vanilla put more, from H=60%
+   already: the skew thickens the left wing, so paths that end up
+   in-the-money more often have touched a low barrier.
+2. **`price_cv − price_mc = −0.0216·c_hat`**, exactly proportional to
+   `c_hat` → the control is centred, `EX` is consistent with the paths.
+   The "BS `EX` on Heston paths" pitfall was avoided.
+3. **`heston_put`(ATM) = 5.4848 against `put_bs`(20%) = 5.5735**, i.e.
+   −0.089: what the smile costs on an ATM vanilla. Small. On a low-barrier
+   DI put the model gap is much larger — this is the "why Heston and not
+   BS" argument for a BRC.
 
-**Le dispositif de l'Acte II se rebranche sans une ligne de modification.** Seule
-la source de `EX` change : `put_bs` → `heston_put`. La réduction de variance est
-une technique statistique, indépendante du modèle.
+**Act II's machinery reconnects without a single line of modification.**
+Only the source of `EX` changes: `put_bs` → `heston_put`. Variance
+reduction is a statistical technique, independent of the model.
 
-Les trois pièges qui vont coûter le plus cher, annoncés :
-1. **`max(v,0)` oublié** → `nan` silencieux propagé sur toute la trajectoire.
-2. **La coupure de branche** de la fonction caractéristique (« the little
-   Heston trap ») : prix juste à T=1, délirant à T=5.
-3. **`v_{t+dt}` utilisé dans le pas du spot** au lieu de `v_t` — le test de
-   corrélation du premier pas est écrit pour ça.
+The three pitfalls that will cost the most, flagged in advance:
+1. **A forgotten `max(v,0)`** → a silent `nan` propagated across the whole
+   path.
+2. **The branch cut** in the characteristic function (the "little Heston
+   trap"): correct price at T=1, nonsensical at T=5.
+3. **`v_{t+dt}` used in the spot's step** instead of `v_t` — the first-step
+   correlation test is written precisely to catch this.
 
-Ensuite : ACTE IV — hedging discret (voir plus bas), qui traite justement le
-dernier point de dette technique (delta près d'une barrière, quête 4.5).
-Restent ouverts : digitales (1.5, 30 XP), monitoring discret, et — après
-l'Acte IV — multi-actif par Cholesky → worst-of → autocall → BRC.
+Next: ACT IV — discrete hedging (see below), which tackles exactly the last
+piece of technical debt (delta near a barrier, quest 4.5). Still open:
+digitals (1.5, 30 XP), discrete monitoring, and — after Act IV — multi-asset
+via Cholesky → worst-of → autocall → BRC.
 
 ---
 
-## ACTE IV — Hedging discret (340 / 340 XP) ✅
+## ACT IV — Discrete hedging (340 / 340 XP) ✅
 
-Blocs TODO dans `src/hedging.py`, tests dans `tests/test_hedging.py` (12
-verts, 4.1 à 4.6 et `test_boss4_artefacts`), boss dans
-`scripts/boss4_hedging.py` (`figures/boss4_hedging.png`,
-`figures/boss4_results.json`).
+TODO blocks in `src/hedging.py`, tests in `tests/test_hedging.py` (12 green,
+4.1 to 4.6 and `test_boss4_artefacts`), boss in `scripts/boss4_hedging.py`
+(`figures/boss4_hedging.png`, `figures/boss4_results.json`).
 
-| Quête | Statut | XP | Dépend de | Validation |
+| Quest | Status | XP | Depends on | Validation |
 |---|---|---|---|---|
-| 4.1 Portefeuille auto-financé | ✅ | 30/30 | — | `test_autofinancement_deltas_arbitraires` (1e-12, deltas arbitraires) + 2 cas dégénérés |
-| 4.2 Erreur de hedging, bon modèle | ✅ | 50/50 | 4.1 | `test_hedging_error_moyenne_dans_ic_et_pente_log_log` — pente -0.485 mesurée |
-| 4.3 Vol arbitrage / modèle faux | ✅ | 50/50 | 4.2 | `test_vol_arbitrage_identite_gamma` — identité gamma-pondérée, signe MOINS |
-| 4.4 Coûts de transaction | ✅ | 40/40 | 4.2 | `test_transaction_costs_frequence_optimale` — pente coût +0.44, optimum RMS intermédiaire |
-| 4.5 Delta près d'une barrière | ✅ | 40/40 | 4.2 | `test_naive_barrier_hedge_degrade_pres_de_la_barriere` — ratio std 2.82, pente ≈0 (pas -0.5) |
-| 4.6 Delta-vega sous Heston | ✅ | 50/50 | 4.2, Acte III | `test_heston_delta_vega_reduit_la_variance` — ratio de variance 3.05 |
-| **BOSS 4** Convergence + P&L (figure) | ✅ | 80/80 | 4.2, 4.3, 4.4 | `test_boss4_artefacts` — pente -0.491, 3 scénarios de P&L distincts |
+| 4.1 Self-financed portfolio | ✅ | 30/30 | — | `test_autofinancement_deltas_arbitraires` (1e-12, arbitrary deltas) + 2 degenerate cases |
+| 4.2 Hedging error under the correct model | ✅ | 50/50 | 4.1 | `test_hedging_error_moyenne_dans_ic_et_pente_log_log` — measured slope -0.485 |
+| 4.3 Vol arbitrage / wrong model | ✅ | 50/50 | 4.2 | `test_vol_arbitrage_identite_gamma` — gamma-weighted identity, MINUS sign |
+| 4.4 Transaction costs | ✅ | 40/40 | 4.2 | `test_transaction_costs_frequence_optimale` — cost slope +0.44, intermediate RMS optimum |
+| 4.5 Delta near a barrier | ✅ | 40/40 | 4.2 | `test_naive_barrier_hedge_degrade_pres_de_la_barriere` — std ratio 2.82, slope ≈0 (not -0.5) |
+| 4.6 Delta-vega under Heston | ✅ | 50/50 | 4.2, Act III | `test_heston_delta_vega_reduit_la_variance` — variance ratio 3.05 |
+| **BOSS 4** Convergence + P&L (figure) | ✅ | 80/80 | 4.2, 4.3, 4.4 | `test_boss4_artefacts` — slope -0.491, 3 distinct P&L scenarios |
 
-Arbre de dépendance de l'acte :
+The act's dependency tree:
 
 ```
-4.1 (auto-financement)
-  └─ 4.2 (erreur de hedging, la brique commune)
+4.1 (self-financing)
+  └─ 4.2 (hedging error, the common brick)
        ├─ 4.3 (vol arbitrage)
-       ├─ 4.4 (coûts de transaction)
-       ├─ 4.5 (barrière)
-       └─ 4.6 (Heston, dépend aussi de l'Acte III)
+       ├─ 4.4 (transaction costs)
+       ├─ 4.5 (barrier)
+       └─ 4.6 (Heston, also depends on Act III)
             └─ BOSS 4
 ```
 
-Le fil de l'acte, trois choses défendables en entretien : la **convergence**
-de l'erreur de hedging en `n_rebal^{-1/2}` (4.2), l'**identité de vol
-arbitrage** (4.3), et la **dégradation du delta près d'une barrière** (4.5) —
-le vrai problème métier, celui qui n'a pas de convergence à montrer, juste une
-cassure à documenter.
+The act's thread, three interview-defensible results: the **convergence** of
+the hedging error at `n_rebal^{-1/2}` (4.2), the **vol-arbitrage identity**
+(4.3), and the **degradation of delta near a barrier** (4.5) — the real
+business problem, the one with no convergence to show, just a break to
+document.
 
-### Séance 7 — les bugs qui ont coûté le plus cher
+### Session 7 — the most expensive bugs
 
-Contrairement aux actes précédents, la plupart des bugs de cet acte n'étaient
-**pas** dans le code de l'étudiant — trois sont tombés dans les tests écrits
-par l'assistant, un bon rappel que « le test a raison » n'est pas un axiome.
+Unlike the earlier acts, most of this act's bugs were **not** in the
+student's code — three landed in tests written by the assistant, a good
+reminder that "the test is right" is not an axiom.
 
-| Piège | Où | Nature | Coût |
+| Pitfall | Where | Nature | Cost |
 |---|---|---|---|
-| `B[-1]` au lieu de `B` dans le calcul de `V_T` | 4.1 | indexation scalaire d'un vecteur par path | invisible sur 2 des 3 tests (deltas dégénérés, où `B` est identique sur tous les paths par construction) — repéré seulement par le test à deltas ARBITRAIRES |
-| `deltas` reçu en paramètre mais recalculé en interne avec `sigma=0.2` en dur | 4.2 | paramètre ignoré + magic number | invisible tant que `sigma` du test coïncidait avec 0.20 |
-| **Référence de test manquant `exp(-r*t_i)` dans la somme de gamma** | 4.3 | formule de référence incomplète (bug du test, pas du code) | écart stable ~2.4%, NE DIMINUAIT PAS avec `n_steps` — a fait suspecter le code de l'étudiant avant qu'une dérivation par Itô révèle le terme manquant (l'erreur de couverture capitalise elle-même au taux r) |
-| Ligne `turnover += np.sum(...)` en trop, reliquat d'une version précédente | 4.4 | code mort qui double-compte un total et le réinjecte dans chaque colonne | pente log-log du coût mesurée à 1.48 au lieu de ~0.5 — repéré par comparaison avec la pente du turnover en actions seul |
-| Overlay vega ajouté avec le mauvais signe (`+n_vega*delta` au lieu de `-n_vega*delta`) | 4.6 | confusion position longue / courte dans la convention de `bs_delta_hedge_deltas` | ratio de variance mesuré sous 1 (l'overlay AGGRAVAIT la variance) au lieu d'être nettement au-dessus |
+| `B[-1]` instead of `B` in the `V_T` computation | 4.1 | scalar indexing of a per-path vector | invisible on 2 of the 3 tests (degenerate deltas, where `B` is identical across all paths by construction) — caught only by the ARBITRARY-deltas test |
+| `deltas` received as a parameter but recomputed internally with a hard-coded `sigma=0.2` | 4.2 | ignored parameter + magic number | invisible as long as the test's `sigma` happened to match 0.20 |
+| **Test reference missing `exp(-r*t_i)` in the gamma sum** | 4.3 | incomplete reference formula (a bug in the test, not the code) | stable ~2.4% gap, that did NOT SHRINK with `n_steps` — cast doubt on the student's code before an Ito derivation revealed the missing term (the hedging error itself compounds at rate r) |
+| An extra `turnover += np.sum(...)` line, left over from an earlier version | 4.4 | dead code double-counting a total and re-injecting it into every column | log-log cost slope measured at 1.48 instead of ~0.5 — spotted by comparing against the share-only turnover's slope |
+| Vega overlay added with the wrong sign (`+n_vega*delta` instead of `-n_vega*delta`) | 4.6 | confusion between long and short position in `bs_delta_hedge_deltas`'s convention | measured variance ratio below 1 (the overlay WORSENED the variance) instead of clearly above |
 
-Leçon transverse : un test qui donne un résultat plausible (bon signe, bon
-ordre de grandeur) peut quand même être faux d'un terme manquant — la
-vérification qui a débloqué 4.3 n'était pas « le signe est bon » mais
-« l'écart ne diminue pas avec `n_steps`, donc ce n'est pas un biais de
-discrétisation, c'est une formule incomplète ».
+Cross-cutting lesson: a test that gives a plausible result (right sign,
+right order of magnitude) can still be wrong by a missing term — the check
+that unblocked 4.3 was not "the sign is right" but "the gap does not shrink
+with `n_steps`, so this is not a discretisation bias, it is an incomplete
+formula".
 
 ---
 
-### Pièges surveillés par les tests de l'Acte II
+### Pitfalls watched by Act II's tests
 
-| Piège | Test qui l'attrape |
+| Pitfall | Test that catches it |
 |---|---|
-| `np.max` au lieu de `np.maximum` (et `min` sans `axis=1`) | `test_di_put_payoffs_valeurs_a_la_main` |
-| Précédence : `cov/sd_Y*sd_X` au lieu de `cov/(sd_Y*sd_X)` | `test_cv_rho_invariant_par_echelle` |
-| Parenthésage : `Y - c*X - EX` au lieu de `Y - c*(X - EX)` | `test_cv_utilise_bien_EX` |
-| Variable globale qui fuit (le `N` fantôme, 2 fois déjà) | `test_cv_pas_de_N_fantome` |
-| Actualisation incohérente entre Y, X et EX | `test_di_put_payoffs_actualisation_coherente` — **tombé dans le panneau S4** |
-| Demi-largeur calculée sur Y au lieu du résidu Z | `test_cv_half_width_sur_le_residu` |
-| Division par 2N au lieu de N (nombre de paires) | `test_cv_antithetic_N_est_le_nombre_de_paires` |
-| Code pas exécuté avant d'être montré | tous — le test doit tourner, pas être lu |
+| `np.max` instead of `np.maximum` (and `min` without `axis=1`) | `test_di_put_payoffs_valeurs_a_la_main` |
+| Precedence: `cov/sd_Y*sd_X` instead of `cov/(sd_Y*sd_X)` | `test_cv_rho_invariant_par_echelle` |
+| Parenthesisation: `Y - c*X - EX` instead of `Y - c*(X - EX)` | `test_cv_utilise_bien_EX` |
+| A leaking global variable (the phantom `N`, twice already) | `test_cv_pas_de_N_fantome` |
+| Inconsistent discounting between Y, X and EX | `test_di_put_payoffs_actualisation_coherente` — **fell into the S4 trap** |
+| Half-width computed on Y instead of the residual Z | `test_cv_half_width_sur_le_residu` |
+| Dividing by 2N instead of N (the number of pairs) | `test_cv_antithetic_N_est_le_nombre_de_paires` |
+| Code shown without having been run | all of them — a test must run, not just be read |
 
-### Pièges tombés en séance 4 (à ne pas refaire)
+### Pitfalls hit in session 4 (not to repeat)
 
-| Piège | Où | Coût |
+| Pitfall | Where | Cost |
 |---|---|---|
-| `np.cov(ddof=1)` vs `np.var(ddof=0)` — normalisations différentes | 2.1 | `c_hat` faux d'un facteur n/(n−1) : 5e-5 contre une tolérance à 1e-10 |
-| `np.correlate` ≠ `np.corrcoef` | 2.1 | corrélation croisée du signal, pas Pearson |
-| `np.corrcoef(...)` renvoie une **matrice 2×2**, pas un scalaire | 2.1 | `assert` sur array → `ValueError: truth value ambiguous` |
-| Paramètre `c` ignoré (recalculé inconditionnellement) | 2.1 | 4 tours pour le voir ; `c=0` doit redonner le MC brut |
-| Payoffs **non actualisés** rendus par `di_put_payoffs` | 2.3 | X̄−EX faux d'un facteur `e^{rT}` **et de signe opposé** : biais silencieux |
-| `van_put` est un **pricer** (rend un tuple), pas un vecteur de payoffs | 2.3 | confusion des couches finance / stats |
-| Spot **hardcodé** dans `put_bs(100, ...)` | 2.3 | tests verts (tous à S0=100) mais prix faux de 11 pts à S0=80, avec IC nul |
-| `paths[:, 0]` (array) au lieu de `paths[0, 0]` (scalaire) | 2.3 | 100 000 calculs BS identiques, 800 Ko, 50× plus lent |
+| `np.cov(ddof=1)` vs `np.var(ddof=0)` — different normalisations | 2.1 | `c_hat` wrong by a factor n/(n−1): 5e-5 against a 1e-10 tolerance |
+| `np.correlate` ≠ `np.corrcoef` | 2.1 | signal cross-correlation, not Pearson |
+| `np.corrcoef(...)` returns a **2×2 matrix**, not a scalar | 2.1 | `assert` on an array → `ValueError: truth value ambiguous` |
+| Parameter `c` ignored (recomputed unconditionally) | 2.1 | took 4 iterations to see it; `c=0` must reproduce the raw MC |
+| **Undiscounted** payoffs returned by `di_put_payoffs` | 2.3 | X̄−EX wrong by a factor `e^{rT}` **and the opposite sign**: a silent bias |
+| `van_put` is a **pricer** (returns a tuple), not a payoff vector | 2.3 | a finance/stats layer mix-up |
+| Spot **hard-coded** in `put_bs(100, ...)` | 2.3 | green tests (all at S0=100) but the price wrong by 11 points at S0=80, with a null CI |
+| `paths[:, 0]` (array) instead of `paths[0, 0]` (scalar) | 2.3 | 100,000 identical BS computations, 800 KB, 50× slower |
 
-### Pièges tombés en séance 5 (à ne pas refaire)
+### Pitfalls hit in session 5 (not to repeat)
 
-| Piège | Où | Coût |
+| Pitfall | Where | Cost |
 |---|---|---|
-| Appeler `gbm_antithetic` (un-pas) pour faire du multi-pas | 2.4a | `n_steps` n'apparaissait pas dans le corps — le tell : un paramètre non consommé |
-| 6 arguments positionnels pour une signature à 7 | 2.4a | `N` → `n_steps`, `rng` → `N` : `TypeError` opaque. Nommer les arguments |
-| Réutiliser `gbm_paths` (qui **cache** son `Z`) pour construire des paires | 2.4a | impossible par construction : une fonction qui cache son aléa n'est pas composable — même raison que l'injection de `rng` dans `delta_mc` |
-| Passer deux fois le même objet `rng` en croyant rejouer les mêmes tirages | 2.4a | un `Generator` a un **état** : il avance. Deux `default_rng(3)` auraient donné `up == down` |
-| `S0np.exp(...)` (`*` manquant) | 2.4a | pas une `SyntaxError` — accès attribut valide → `NameError` à l'exécution, avalé par le `xfail` |
-| Copier-coller : `X_pair = (Y_up + Y_down)/2` | 2.4b | retombe sur le cas dégénéré 2.2 → demi-IC **exactement 0** et un test au vert. Attrapé par le seul test qui pose une **égalité**, pas une inégalité |
-| `np.cov(Y, X)` avec `Y`/`X` absents de la signature (params : `Y_pilot`/`X_pilot`) | 2.5 | **3e occurrence** de la globale fantôme. Sauvé par le `NameError` faute de global homonyme — avec un `X` au niveau module, c'était un `c` faux et silencieux |
-| `[0, 1]` et `float(...)` oubliés sur `np.cov` | 2.5 | déjà tombé en 2.1, réécrit correctement ligne 133 puis refait 150 lignes plus bas |
+| Calling `gbm_antithetic` (single-step) to do multi-step work | 2.4a | `n_steps` never appeared in the body — the tell: an unconsumed parameter |
+| 6 positional arguments for a 7-argument signature | 2.4a | `N` → `n_steps`, `rng` → `N`: an opaque `TypeError`. Name the arguments |
+| Reusing `gbm_paths` (which **caches** its `Z`) to build pairs | 2.4a | impossible by construction: a function that caches its own randomness is not composable — the same reason `rng` is injected into `delta_mc` |
+| Passing the same `rng` object twice believing it replays the same draws | 2.4a | a `Generator` has **state**: it advances. Two `default_rng(3)` calls would have given `up == down` |
+| `S0np.exp(...)` (a missing `*`) | 2.4a | not a `SyntaxError` — a valid attribute access → a `NameError` at runtime, swallowed by `xfail` |
+| Copy-paste: `X_pair = (Y_up + Y_down)/2` | 2.4b | falls back onto the degenerate case 2.2 → half-width **exactly 0** and a green test. Caught only by the one test asserting an **equality**, not an inequality |
+| `np.cov(Y, X)` with `Y`/`X` absent from the signature (params: `Y_pilot`/`X_pilot`) | 2.5 | **3rd occurrence** of the phantom global. Saved by the `NameError`, for lack of a same-named global — with an `X` at module level, it would have been a silently wrong `c` |
+| `[0, 1]` and `float(...)` forgotten on `np.cov` | 2.5 | already hit in 2.1, correctly rewritten at line 133 then redone 150 lines further down |
 
-Leçon transverse de la séance : `xfail(strict)` **avale n'importe quelle
-exception** (typo, `NameError`, `TypeError`) et l'affiche comme un XFAIL
-attendu. Tant qu'un test est marqué, il ne diagnostique rien — appeler la
-fonction à la main dans un REPL est le seul moyen de voir la vraie erreur.
+Cross-cutting lesson from the session: `xfail(strict)` **swallows any
+exception** (a typo, a `NameError`, a `TypeError`) and displays it as an
+expected XFAIL. As long as a test is marked, it diagnoses nothing — calling
+the function by hand in a REPL is the only way to see the real error.
 
-Le fil : les 4 derniers pièges de la S4 sont **invisibles sans référence externe**. Un
-contrôle décentré rend un prix plausible et une demi-largeur qui rétrécit — plus
-il est faux, plus il a l'air précis. D'où la règle du repo : valider contre une
-formule fermée ou une identité de parité, jamais contre « ça a l'air correct ».
+The thread: S4's last 4 pitfalls are **invisible without an external
+reference**. An off-centre control yields a plausible price and a
+half-width that narrows — the more wrong it is, the more precise it looks.
+Hence the repo's rule: validate against a closed form or a parity identity,
+never against "it looks about right".

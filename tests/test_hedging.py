@@ -1,12 +1,12 @@
-"""Acte IV — hedging discret : portefeuille auto-financé, erreur de couverture.
+"""Act IV -- discrete hedging: self-financed portfolio, replication error.
 
-Cette première tranche couvre QUÊTE 4.1 et QUÊTE 4.2 uniquement. Les tests de
-4.3 à 4.6 et du BOSS 4 arrivent une fois la sortie de 4.2 postée et validée --
-c'est une règle du CLAUDE.md du repo, pas un oubli.
+This first slice covers QUEST 4.1 and QUEST 4.2 only. Tests for 4.3 through
+4.6 and BOSS 4 arrive once 4.2's output has been posted and validated -- this
+is a rule from the repo's CLAUDE.md, not an oversight.
 
-4.1 est une identité algébrique (deltas arbitraires, 1e-12) : elle ne dépend
-d'aucun pricing. 4.2 est un test de TAUX de convergence en log-log, jamais un
-seuil numérique nu -- voir test_hedging_error_moyenne_dans_ic_et_pente_log_log.
+4.1 is an algebraic identity (arbitrary deltas, 1e-12): it depends on no
+pricing at all. 4.2 is a log-log convergence-RATE test, never a bare
+numerical threshold -- see test_hedging_error_moyenne_dans_ic_et_pente_log_log.
 
 Run: .venv/bin/python -m pytest tests/test_hedging.py -v
 """
@@ -29,28 +29,28 @@ from mc_engine import gbm_paths
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-# Paramètres de référence, cohérents avec ceux des actes précédents.
+# Reference parameters, consistent with the earlier acts.
 HP = dict(S0=100.0, K=100.0, sigma=0.20, r=0.05, T=1.0)
 
-# Paramètres Heston de référence, identiques à ceux de tests/test_heston.py.
+# Reference Heston parameters, identical to those in tests/test_heston.py.
 HESTON_HP = dict(S0=100.0, v0=0.04, r=0.05, T=1.0,
                   kappa=1.5, theta=0.04, xi=0.3, rho=-0.7)
 
 
 def _half_width(v: np.ndarray) -> float:
-    """95% CI half-width -- la convention du repo."""
+    """95% CI half-width -- the repo's convention."""
     return 1.96 * v.std(ddof=1) / np.sqrt(len(v))
 
 
 
 def test_autofinancement_deltas_arbitraires():
-    """L'identité d'auto-financement tient pour N'IMPORTE QUELLE suite de deltas.
+    """The self-financing identity holds for ANY sequence of deltas.
 
-    Deltas tirés au hasard dans [-5, 5] (négatifs, énormes, rien à voir avec un
-    vrai delta d'option) : ce test ne valide pas un pricing, il valide une
-    comptabilité. La récursion de référence est reconstruite ICI, dans le
-    test, indépendamment de `hedging.py` -- comparer la fonction à elle-même
-    ne prouverait rien.
+    Deltas drawn at random in [-5, 5] (negative, huge, nothing like a real
+    option delta): this test does not validate a pricing, it validates a
+    bookkeeping rule. The reference recursion is rebuilt HERE, in the test,
+    independently of `hedging.py` -- comparing the function to itself would
+    prove nothing.
     """
     rng = np.random.default_rng(0)
     N, n_steps = 500, 12
@@ -62,7 +62,7 @@ def test_autofinancement_deltas_arbitraires():
     deltas = rng.uniform(-5.0, 5.0, size=(N, n_steps))
     V0 = rng.uniform(1.0, 20.0, size=N)
 
-    # Récursion de référence, écrite indépendamment de hedging.py.
+    # Reference recursion, written independently of hedging.py.
     B = V0 - deltas[:, 0] * paths[:, 0]
     for i in range(n_steps - 1):
         B = B * np.exp(r * dt) - (deltas[:, i + 1] - deltas[:, i]) * paths[:, i + 1]
@@ -75,10 +75,10 @@ def test_autofinancement_deltas_arbitraires():
 
 
 def test_autofinancement_delta_nul_est_du_cash_pur():
-    """deltas = 0 partout : le portefeuille ne touche jamais l'action.
+    """deltas = 0 everywhere: the portfolio never touches the share.
 
-    V_T doit alors être exactement V0 capitalisé au taux sans risque --
-    aucune trajectoire ne devrait intervenir dans le résultat.
+    V_T must then be exactly V0 compounded at the risk-free rate -- no path
+    should play any role in the result.
     """
     rng = np.random.default_rng(1)
     N, n_steps = 1_000, 20
@@ -95,14 +95,14 @@ def test_autofinancement_delta_nul_est_du_cash_pur():
 
 
 def test_autofinancement_delta_constant_formule_fermee():
-    """deltas = c partout : identité fermée, indépendante de la boucle interne.
+    """deltas = c everywhere: closed identity, independent of the step loop.
 
-    Sans rebalancement, l'argent placé en cash capitalise pendant toute la
-    période, et le résultat s'écrit en circuit fermé :
+    With no rebalancing, the cash placed at t=0 compounds over the whole
+    period, and the result has a closed form:
         V_T = V0*exp(rT) + c*(S_T - S0*exp(rT))
-    C'est une SECONDE référence indépendante de la récursion pas-à-pas testée
-    plus haut -- une erreur qui se compenserait par hasard dans la récursion
-    devrait quand même se voir ici.
+    This is a SECOND reference, independent of the step-by-step recursion
+    tested above -- an error that happened to cancel out in the recursion
+    should still show up here.
     """
     rng = np.random.default_rng(2)
     N, n_steps = 1_000, 15
@@ -121,12 +121,12 @@ def test_autofinancement_delta_constant_formule_fermee():
 
 
 def test_bs_delta_hedge_deltas_vs_formule_fermee():
-    """Au premier pas (tau = T), le delta doit coïncider avec N(d1) - 1 (put).
+    """At the first step (tau = T), delta must match N(d1) - 1 (put).
 
-    Référence écrite directement ici avec scipy.stats.norm, indépendante de
-    bs.py. Tolérance 1e-3 : pas une identité algébrique (bs_delta_hedge_deltas
-    peut passer par une différence finie interne), mais un ordre de grandeur
-    qui ne pardonne pas une formule fausse.
+    Reference written directly here with scipy.stats.norm, independent of
+    bs.py. Tolerance 1e-3: not an algebraic identity
+    (bs_delta_hedge_deltas may go through an internal finite difference),
+    but an order of magnitude that does not forgive a wrong formula.
     """
     S0, K, sigma, r, T = HP["S0"], HP["K"], HP["sigma"], HP["r"], HP["T"]
     N, n_steps = 2_000, 10
@@ -145,18 +145,18 @@ def test_bs_delta_hedge_deltas_vs_formule_fermee():
 
 
 def test_hedging_error_moyenne_dans_ic_et_pente_log_log():
-    """4.2, la validation qui ferme la quête.
+    """4.2, the validation that closes the quest.
 
-    (a) Sur un run donné, la moyenne de l'erreur de hedging doit être dans son
-        propre IC 95% autour de zéro : un hedge BS correct, sous le modèle
-        qu'il suppose, ne biaise pas le portefeuille de réplication.
-    (b) Sur une grille de n_steps, l'écart-type de l'erreur décroît, et la
-        pente de la régression log(std) ~ log(n_steps) doit être proche de
-        -1/2 (Boyle & Emanuel, 1980 -- donné en INDICE 3 de hedging.py, pas
-        ici). Tolérance large sur la pente ([-0.8, -0.2]) car c'est un ajustement
-        statistique sur peu de points, pas une identité -- ce qui est testé
-        est la DIRECTION et l'ORDRE DE GRANDEUR de la convergence, jamais un
-        seuil numérique sur une seule valeur d'écart-type.
+    (a) On a given run, the mean hedging error must sit inside its own 95%
+        CI around zero: a correctly built BS hedge, under the model it
+        assumes, does not bias the replicating portfolio.
+    (b) On a grid of n_steps, the error's standard deviation decreases, and
+        the slope of the log(std) ~ log(n_steps) regression must be close
+        to -1/2 (Boyle & Emanuel, 1980 -- given as HINT 3 in hedging.py, not
+        here). Loose tolerance on the slope ([-0.8, -0.2]) since this is a
+        statistical fit on few points, not an identity -- what is tested is
+        the DIRECTION and the ORDER OF MAGNITUDE of the convergence, never a
+        numerical threshold on a single standard-deviation value.
     """
     S0, K, sigma, r, T = HP["S0"], HP["K"], HP["sigma"], HP["r"], HP["T"]
     N = 30_000
@@ -173,25 +173,25 @@ def test_hedging_error_moyenne_dans_ic_et_pente_log_log():
 
         mean, half_width = hedging.hedging_error_stats(errors)
         assert abs(mean) < half_width * 1.5, (
-            f"n_steps={n_steps}: moyenne {mean:.4f} hors IC (+/-{half_width:.4f})"
+            f"n_steps={n_steps}: mean {mean:.4f} outside CI (+/-{half_width:.4f})"
         )
 
         stds.append(errors.std(ddof=1))
 
     stds = np.asarray(stds)
     slope, _ = np.polyfit(np.log(n_steps_grid), np.log(stds), 1)
-    print(f"pente log-log mesuree = {slope:.3f} (attendu ~ -0.5)")
+    print(f"measured log-log slope = {slope:.3f} (expected ~ -0.5)")
 
-    assert np.all(np.diff(stds) < 0.0)          # l'ecart-type decroit
+    assert np.all(np.diff(stds) < 0.0)          # the std decreases
     assert -0.8 < slope < -0.2
 
 
 def test_hedging_error_stats_convention():
-    """hedging_error_stats suit la convention du repo : (moyenne, demi-IC 95%).
+    """hedging_error_stats follows the repo's convention: (mean, 95% CI half-width).
 
-    Identité pure sur un échantillon quelconque, sans lien avec le hedging --
-    verrouille juste la formule 1.96*sd/sqrt(n) sur ddof=1, comme partout
-    ailleurs dans le repo.
+    A pure identity on an arbitrary sample, unrelated to hedging -- it only
+    locks down the formula 1.96*sd/sqrt(n) on ddof=1, as everywhere else in
+    the repo.
     """
     rng = np.random.default_rng(3)
     errors = rng.normal(loc=0.7, scale=2.5, size=5_000)
@@ -203,17 +203,17 @@ def test_hedging_error_stats_convention():
 
 
 # ---------------------------------------------------------------------------
-# QUÊTE 4.3 — vol arbitrage / modèle faux
+# QUEST 4.3 -- vol arbitrage / the wrong model
 # ---------------------------------------------------------------------------
 
 
 def test_bs_gamma_vs_difference_finie_sur_delta():
-    """Gamma est la dérivée du delta par rapport au spot.
+    """Gamma is the derivative of delta with respect to spot.
 
-    Référence indépendante de la formule fermée : une différence finie
-    centrée sur bs.delta (déjà elle-même une différence finie sur le prix).
-    Tolérance 1e-3 -- deux couches de différences finies empilées, l'erreur
-    ne peut pas être 1e-10.
+    Reference independent of the closed form: a centred finite difference
+    on bs.delta (itself already a finite difference on the price).
+    Tolerance 1e-3 -- two layers of finite differences stacked, the error
+    cannot be 1e-10.
     """
     K, sigma, r = 100.0, 0.25, 0.03
     h_outer = 0.01
@@ -225,27 +225,27 @@ def test_bs_gamma_vs_difference_finie_sur_delta():
         delta_down = bs.delta(S0 - h_outer, 1e-4, K, sigma, r, tau)
         gamma_fd = (delta_up - delta_down) / (2 * h_outer)
 
-        print(f"S0={S0} tau={tau}  gamma_ferme={gamma_closed:.6f}  gamma_fd={gamma_fd:.6f}")
+        print(f"S0={S0} tau={tau}  gamma_closed={gamma_closed:.6f}  gamma_fd={gamma_fd:.6f}")
         assert abs(gamma_closed - gamma_fd) < 1e-3
 
 
 def test_vol_arbitrage_identite_gamma():
-    """L'identité de 4.3 : P&L moyen actualisé = -integrale de gamma ponderee.
+    """4.3's identity: mean discounted P&L = -weighted gamma integral.
 
-    Reference reconstruite ICI, independamment de vol_arbitrage_pnl : la somme
-    discrete de -exp(-r*t_i)*0.5*Gamma_i*S_i^2*(sigma_real^2-sigma_impl^2)*dt
-    le long de chaque trajectoire, moyennee sur les N paths. Signe MOINS : V0
-    place le portefeuille du cote VENDEUR (court gamma), qui perd quand la vol
-    realisee depasse la vol de hedge. Le facteur exp(-r*t_i) DANS la somme
-    (pas juste exp(-rT) en facteur global) vient de la resolution de l'EDO
-    de_t = r*e_t*dt - 0.5*Gamma*S^2*(sigma_real^2-sigma_impl^2)*dt sur
-    l'erreur de couverture e_t = Pi_t - V_t : l'erreur accumulee capitalise
-    elle-meme au taux r jusqu'a maturite, elle n'est pas juste actualisee une
-    fois a la fin (voir INDICE 3 de vol_arbitrage_pnl dans hedging.py -- et le
-    PIEGE qui documente cette erreur, tombee une premiere fois ici). C'est une
-    IDENTITE testee sur la MOYENNE (comparee a son IC 95%), pas une inegalite
-    de signe -- un signe correct peut sortir d'une formule fausse par chance,
-    une identite numerique beaucoup plus difficilement.
+    Reference rebuilt HERE, independently of vol_arbitrage_pnl: the discrete
+    sum of -exp(-r*t_i)*0.5*Gamma_i*S_i^2*(sigma_real^2-sigma_impl^2)*dt
+    along each path, averaged over the N paths. MINUS sign: V0 puts the
+    portfolio on the SELLER's side (short gamma), which loses when realised
+    vol exceeds hedge vol. The exp(-r*t_i) factor INSIDE the sum (not just
+    exp(-rT) as a global factor) comes from solving the ODE
+    de_t = r*e_t*dt - 0.5*Gamma*S^2*(sigma_real^2-sigma_impl^2)*dt on the
+    hedging error e_t = Pi_t - V_t: the accumulated error compounds itself at
+    rate r up to maturity, it is not simply discounted once at the end (see
+    HINT 3 of vol_arbitrage_pnl in hedging.py -- and the PITFALL documenting
+    this very mistake, hit once here). This is an IDENTITY tested on the
+    MEAN (compared to its 95% CI), not a sign inequality -- a correct sign
+    can come out of a wrong formula by chance, a numerical identity much
+    less so.
     """
     S0, K, r, T = 100.0, 100.0, 0.05, 1.0
     sigma_impl, sigma_real = 0.20, 0.30
@@ -259,50 +259,50 @@ def test_vol_arbitrage_identite_gamma():
     pnl = hedging.vol_arbitrage_pnl(paths, K, sigma_impl, r, T, V0, option="put")
     mean_pnl, half_width_pnl = hedging.hedging_error_stats(pnl)
 
-    t_i = np.arange(n_steps) * dt                 # debut de chaque intervalle
-    tau = T - t_i                                  # (n_steps,) -- une par colonne rebalancee
+    t_i = np.arange(n_steps) * dt                 # start of each interval
+    tau = T - t_i                                  # (n_steps,) -- one per rebalanced column
     S_rebal = paths[:, :-1]                        # (N, n_steps)
     gamma = hedging.bs_gamma(S_rebal, K, sigma_impl, r, tau)
     integrand = -np.exp(-r * t_i) * 0.5 * gamma * S_rebal**2 * (sigma_real**2 - sigma_impl**2) * dt
     ref_per_path = integrand.sum(axis=1)
     mean_ref = ref_per_path.mean()
 
-    print(f"P&L moyen mesure={mean_pnl:.4f}+/-{half_width_pnl:.4f}  "
-          f"reference gamma={mean_ref:.4f}")
+    print(f"measured mean P&L={mean_pnl:.4f}+/-{half_width_pnl:.4f}  "
+          f"gamma reference={mean_ref:.4f}")
 
     assert abs(mean_pnl - mean_ref) < half_width_pnl * 1.5
 
 
 # ---------------------------------------------------------------------------
-# QUÊTE 4.4 — coûts de transaction
+# QUEST 4.4 -- transaction costs
 # ---------------------------------------------------------------------------
 
 
 def test_turnover_deltas_constants_et_alternes():
-    """Deux identités fermées sur le turnover, aux deux extrêmes.
+    """Two closed identities on turnover, at both extremes.
 
-    Deltas constants : un seul achat, jamais de rebalancement ensuite --
-    turnover = |delta_0| exactement. Deltas qui alternent de signe à chaque
-    pas : rien ne s'annule jamais, turnover = somme de tous les |ecarts|,
-    calculable à la main terme à terme.
+    Constant deltas: a single purchase, never rebalanced afterwards --
+    turnover = |delta_0| exactly. Deltas alternating sign at every step:
+    nothing ever cancels, turnover = sum of all |gaps|, computable by hand
+    term by term.
     """
     N, n_steps = 200, 10
 
     deltas_const = np.full((N, n_steps), 3.5)
     assert np.max(np.abs(hedging.turnover(deltas_const) - 3.5)) < 1e-12
 
-    # alterne +2, -2, +2, -2, ... : |2-0| + |−2−2| + |2−(−2)| + ... = 2 + 4*(n_steps-1)
+    # alternates +2, -2, +2, -2, ... : |2-0| + |-2-2| + |2-(-2)| + ... = 2 + 4*(n_steps-1)
     signs = np.array([1 if i % 2 == 0 else -1 for i in range(n_steps)])
     deltas_alt = 2.0 * np.tile(signs, (N, 1))
-    attendu = 2.0 + 4.0 * (n_steps - 1)
-    assert np.max(np.abs(hedging.turnover(deltas_alt) - attendu)) < 1e-12
+    expected = 2.0 + 4.0 * (n_steps - 1)
+    assert np.max(np.abs(hedging.turnover(deltas_alt) - expected)) < 1e-12
 
 
 def test_transaction_costs_deltas_constants():
-    """Deltas constants : un seul échange, au tout premier prix S_0.
+    """Constant deltas: a single trade, at the very first price S_0.
 
-    Identité fermée indépendante de `turnover` : cost = cost_rate * |delta| * S0,
-    puisqu'aucun rebalancement n'a lieu après l'achat initial.
+    Closed identity independent of `turnover`: cost = cost_rate * |delta| * S0,
+    since no rebalancing happens after the initial purchase.
     """
     rng = np.random.default_rng(5)
     N, n_steps, S0 = 500, 8, 100.0
@@ -313,21 +313,22 @@ def test_transaction_costs_deltas_constants():
     cost_rate = 0.002
 
     costs = hedging.transaction_costs(paths, deltas, cost_rate)
-    attendu = cost_rate * abs(c) * S0
+    expected = cost_rate * abs(c) * S0
 
-    assert np.max(np.abs(costs - attendu)) < 1e-9
+    assert np.max(np.abs(costs - expected)) < 1e-9
 
 
 def test_transaction_costs_frequence_optimale():
-    """4.4, la validation qui ferme la quête.
+    """4.4, the validation that closes the quest.
 
-    (a) le coût moyen de transaction CROÎT en sqrt(n_rebal) -- pente log-log
-        positive, proche de +1/2 (tolérance large, même esprit que 4.2) ;
-    (b) l'écart-type de l'erreur de hedging SANS coûts continue de décroître
-        (rappel de 4.2, mêmes trajectoires) ;
-    (c) il existe un n_steps qui minimise le RMS de l'erreur AVEC coûts --
-        ni le plus petit ni le plus grand de la grille testée. Un test qui
-        prouve l'existence d'un optimum intermédiaire, pas une convergence.
+    (a) the mean transaction cost GROWS as sqrt(n_rebal) -- positive log-log
+        slope, close to +1/2 (loose tolerance, same spirit as 4.2);
+    (b) the hedging error's standard deviation WITHOUT costs keeps
+        decreasing (a reminder of 4.2, same paths);
+    (c) there is an n_steps that minimises the RMS of the error WITH costs
+        -- neither the smallest nor the largest of the tested grid. A test
+        that proves the existence of an intermediate optimum, not a
+        convergence.
     """
     S0, K, sigma, r, T = HP["S0"], HP["K"], HP["sigma"], HP["r"], HP["T"]
     N = 20_000
@@ -353,35 +354,36 @@ def test_transaction_costs_frequence_optimale():
     rms_with_costs = np.asarray(rms_with_costs)
 
     slope, _ = np.polyfit(np.log(n_steps_grid), np.log(mean_costs), 1)
-    print(f"pente log-log du cout moyen = {slope:.3f} (attendu ~ +0.5)")
-    print(f"RMS erreur avec couts = {np.round(rms_with_costs, 4)}")
+    print(f"mean-cost log-log slope = {slope:.3f} (expected ~ +0.5)")
+    print(f"RMS error with costs = {np.round(rms_with_costs, 4)}")
 
-    assert np.all(np.diff(mean_costs) > 0.0)      # le cout croit
+    assert np.all(np.diff(mean_costs) > 0.0)      # cost grows
     assert 0.2 < slope < 0.8
 
     i_min = int(np.argmin(rms_with_costs))
-    assert 0 < i_min < len(n_steps_grid) - 1       # optimum intermediaire, pas aux bords
+    assert 0 < i_min < len(n_steps_grid) - 1       # intermediate optimum, not at the edges
 
 
 # ---------------------------------------------------------------------------
-# QUÊTE 4.5 — delta près d'une barrière
+# QUEST 4.5 -- delta near a barrier
 # ---------------------------------------------------------------------------
 
 
 def test_naive_barrier_hedge_degrade_pres_de_la_barriere():
-    """4.5, la validation qui ferme la quête : pas de convergence, une DÉGRADATION.
+    """4.5, the validation that closes the quest: no convergence, a DEGRADATION.
 
-    Deux barrières, mêmes trajectoires (CRN) : une loin du spot (H=60, le
-    knock-out est rare, le delta vanille hedge presque un vanille), une
-    proche du spot (H=90, les trajectoires croisent la barrière souvent, le
-    delta vanille ne voit jamais la discontinuité du payoff).
+    Two barriers, same paths (CRN): one far from spot (H=60, knock-out is
+    rare, the vanilla delta hedges close to a vanilla), one close to spot
+    (H=90, paths cross the barrier often, the vanilla delta never sees the
+    payoff's discontinuity).
 
-    (a) l'ecart-type de l'erreur pres de la barriere doit etre nettement plus
-        grand que loin de la barriere (ratio > 2, mesure empiriquement ~2.8) ;
-    (b) pres de la barriere, augmenter n_steps ne fait PAS decroitre
-        l'ecart-type comme en 4.2 -- la pente log-log doit rester proche de 0
-        (mesuree ~0.0, tres different du -0.5 de 4.2), signe que l'erreur est
-        un biais structurel du delta vanille, pas du bruit MC qui se moyenne.
+    (a) the error's standard deviation near the barrier must be clearly
+        larger than far from it (ratio > 2, measured empirically ~2.8);
+    (b) near the barrier, increasing n_steps does NOT decrease the standard
+        deviation as in 4.2 -- the log-log slope must stay close to 0
+        (measured ~0.0, very different from 4.2's -0.5), a sign that the
+        error is a structural bias of the vanilla delta, not MC noise that
+        averages out.
     """
     S0, K, sigma, r, T = HP["S0"], HP["K"], HP["sigma"], HP["r"], HP["T"]
     H_far, H_near = 60.0, 90.0
@@ -414,22 +416,22 @@ def test_naive_barrier_hedge_degrade_pres_de_la_barriere():
         stds_near.append(e.std(ddof=1))
 
     slope, _ = np.polyfit(np.log(n_steps_grid), np.log(stds_near), 1)
-    print(f"pente log-log pres de la barriere = {slope:.3f} (attendu ~ 0, PAS -0.5)")
+    print(f"log-log slope near the barrier = {slope:.3f} (expected ~ 0, NOT -0.5)")
     assert -0.15 < slope < 0.15
 
 
 # ---------------------------------------------------------------------------
-# QUÊTE 4.6 — delta-vega sous Heston
+# QUEST 4.6 -- delta-vega under Heston
 # ---------------------------------------------------------------------------
 
 
 def test_heston_delta_bs_hedge_error_biaise():
-    """Hedge delta BS seul sous Heston : erreur non nulle, à variance notable.
+    """BS-delta-only hedge under Heston: nonzero error, with notable variance.
 
-    Pas d'identité fermée ici (c'est tout le point de la 4.6) -- juste la
-    garantie que la fonction tourne, rend la bonne forme, et une variance
-    largement non nulle (sinon le test de reduction de variance qui suit
-    n'aurait aucun sens : il n'y aurait rien a reduire).
+    No closed-form identity here (that is the whole point of 4.6) -- just
+    the guarantee that the function runs, returns the right shape, and a
+    clearly nonzero variance (otherwise the variance-reduction test that
+    follows would be meaningless: there would be nothing to reduce).
     """
     S0, K, r, T = HESTON_HP["S0"], HP["K"], HESTON_HP["r"], HESTON_HP["T"]
     sigma_hedge = np.sqrt(HESTON_HP["theta"])
@@ -446,13 +448,12 @@ def test_heston_delta_bs_hedge_error_biaise():
 
 
 def test_heston_delta_vega_reduit_la_variance():
-    """4.6, la validation qui ferme la quête et l'acte.
+    """4.6, the validation that closes the quest and the act.
 
-    Overlay vega statique sur K_vega=110, dimensionne par le ratio des vegas
-    BS a sigma_hedge. Sur les MEMES trajectoires Heston (CRN), le ratio de
-    variance (delta seul / delta+vega) doit etre significativement > 1 --
-    mesure empiriquement ~3.0, seuil fixe a 1.5 pour laisser de la marge au
-    bruit MC.
+    Static vega overlay on K_vega=110, sized by the ratio of the BS vegas at
+    sigma_hedge. On the SAME Heston paths (CRN), the variance ratio (delta
+    alone / delta+vega) must be significantly > 1 -- measured empirically
+    ~3.0, threshold set at 1.5 to leave margin for MC noise.
     """
     S0, K, K_vega, r, T = HESTON_HP["S0"], HP["K"], 110.0, HESTON_HP["r"], HESTON_HP["T"]
     sigma_hedge = np.sqrt(HESTON_HP["theta"])
@@ -467,32 +468,32 @@ def test_heston_delta_vega_reduit_la_variance():
         S, K, K_vega, sigma_hedge, r, T, V0, option="put")
 
     ratio = err_delta.var(ddof=1) / err_delta_vega.var(ddof=1)
-    print(f"Var(delta seul)={err_delta.var(ddof=1):.4f}  "
+    print(f"Var(delta alone)={err_delta.var(ddof=1):.4f}  "
           f"Var(delta+vega)={err_delta_vega.var(ddof=1):.4f}  ratio={ratio:.3f}")
 
     assert ratio > 1.5
 
 
 # ---------------------------------------------------------------------------
-# BOSS 4 — convergence et P&L de réplication
+# BOSS 4 -- convergence and replication P&L
 # ---------------------------------------------------------------------------
 
 
 def test_boss4_artefacts():
-    """Vérifie les artefacts produits par scripts/boss4_hedging.py.
+    """Checks the artefacts produced by scripts/boss4_hedging.py.
 
     Run: .venv/bin/python scripts/boss4_hedging.py
 
-    Pas de nouvelle identité numérique -- tout a déjà été validé quête par
-    quête dans ce fichier. Ce test vérifie seulement que le script tourne, que
-    le contrat de sortie (documenté en tête de boss4_hedging.py) est respecté,
-    et que la pente mesurée sur "convergence" retombe dans la même fourchette
-    que celle de 4.2.
+    No new numerical identity -- everything was already validated quest by
+    quest in this file. This test only checks that the script runs, that
+    the output contract (documented at the top of boss4_hedging.py) is
+    respected, and that the slope measured on "convergence" falls in the
+    same range as 4.2's.
     """
     fig = ROOT / "figures" / "boss4_hedging.png"
     res = ROOT / "figures" / "boss4_results.json"
-    assert fig.exists(), "figure manquante"
-    assert res.exists(), "resultats manquants"
+    assert fig.exists(), "missing figure"
+    assert res.exists(), "missing results"
 
     data = json.loads(res.read_text())
 
@@ -501,7 +502,7 @@ def test_boss4_artefacts():
     n_steps_list = [p["n_steps"] for p in convergence]
     assert n_steps_list == sorted(n_steps_list)
     stds = [p["std_error"] for p in convergence]
-    assert all(a > b for a, b in zip(stds, stds[1:]))       # decroissant
+    assert all(a > b for a, b in zip(stds, stds[1:]))       # decreasing
 
     assert -0.8 < data["slope_measured"] < -0.2
 
@@ -511,5 +512,5 @@ def test_boss4_artefacts():
         assert set(scenario.keys()) == {"mean", "std", "p5", "p50", "p95"}
         assert scenario["p5"] < scenario["p50"] < scenario["p95"]
 
-    # "avec_couts" est une perte certaine : jamais centre en zero.
+    # "avec_couts" is a certain loss: never centred at zero.
     assert pnl["avec_couts"]["mean"] < 0.0

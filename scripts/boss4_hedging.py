@@ -1,4 +1,4 @@
-"""Convergence de l'erreur de hedging, et distribution du P&L de réplication.
+"""Convergence of the hedging error, and distribution of the replication P&L.
 
 Run:       .venv/bin/python scripts/boss4_hedging.py
 Validated: pytest tests/test_hedging.py::test_boss4_artefacts
@@ -7,14 +7,14 @@ Output contract, read by the test down to the key names:
 
   figures/boss4_hedging.png
       Two panels:
-        (top)    log-log scatter of std(hedging_error) against n_rebal, sur la
-                 grille de 4.2, avec la droite théorique de pente -1/2 tracée
-                 par-dessus (ancrée au premier point de la grille) ;
-        (bottom) trois histogrammes superposés (ou trois distributions
-                 côte à côte) du P&L de réplication, à n_rebal fixé : modèle
-                 correct (4.2), modèle faux -- vol arbitrage (4.3), avec coûts
-                 de transaction (4.4). Même axe des x pour les trois, pour
-                 que l'écrasement relatif des distributions soit lisible.
+        (top)    log-log scatter of std(hedging_error) against n_rebal, on
+                 4.2's grid, with the theoretical -1/2 slope line drawn on
+                 top (anchored at the grid's first point);
+        (bottom) three overlaid histograms (or three side-by-side
+                 distributions) of the replication P&L, at fixed n_rebal:
+                 correct model (4.2), wrong model -- vol arbitrage (4.3),
+                 with transaction costs (4.4). Same x-axis for all three, so
+                 the relative squeeze between distributions stays readable.
 
   figures/boss4_results.json
       {
@@ -23,23 +23,23 @@ Output contract, read by the test down to the key names:
                    "n_steps_pnl": ..., "N": ...},
         "convergence": [
           {"n_steps": 8, "std_error": ...}, ...
-        ]                                              >= 5 points, croissants
+        ]                                              >= 5 points, increasing
         "pnl": {
           "modele_correct":  {"mean": ..., "std": ..., "p5": ..., "p50": ..., "p95": ...},
           "modele_faux":     {"mean": ..., "std": ..., "p5": ..., "p50": ..., "p95": ...},
           "avec_couts":      {"mean": ..., "std": ..., "p5": ..., "p50": ..., "p95": ...}
         },
-        "slope_measured": ...             # pente log-log mesurée sur "convergence"
+        "slope_measured": ...             # log-log slope measured on "convergence"
       }
-      Python floats only, json.dump rejette np.float64.
+      Python floats only, json.dump rejects np.float64.
 
-Ce que la figure doit montrer : le panneau du haut est la même mesure que
-`test_hedging_error_moyenne_dans_ic_et_pente_log_log` (4.2), simplement tracée
-au lieu d'être seulement testée -- la pente -1/2 doit coller aux points. Le
-panneau du bas met en regard trois défaillances distinctes d'un même hedge :
-le bruit de discrétisation pur (modèle correct, centré en zéro), le biais de
-modèle (vol arbitrage, décalé et non centré si sigma_real != sigma_impl), et
-le coût certain (avec coûts, décalé négativement, jamais centré en zéro).
+What the figure must show: the top panel is the same measurement as
+`test_hedging_error_moyenne_dans_ic_et_pente_log_log` (4.2), simply plotted
+instead of merely tested -- the -1/2 slope must hug the points. The bottom
+panel sets three distinct failure modes of the same hedge side by side: pure
+discretisation noise (correct model, centred at zero), model bias (vol
+arbitrage, shifted and off-centre if sigma_real != sigma_impl), and the
+certain cost (with costs, shifted negative, never centred at zero).
 """
 
 import sys, pathlib
@@ -63,54 +63,52 @@ FIGURES = ROOT / "figures"
 def main() -> None:
     """Produce figures/boss4_hedging.png and figures/boss4_results.json.
 
-    QUÊTE BOSS 4 — convergence et P&L de réplication [80 XP]
-    OBJECTIF : assembler en une seule figure les trois résultats défendables
-        en entretien annoncés en tête d'acte -- la convergence en
-        `n_rebal^{-1/2}` (4.2), l'identité de vol arbitrage (4.3), et l'effet
-        des coûts de transaction (4.4). Rien de nouveau à calculer : ce boss
-        ne fait qu'appeler ce qui existe déjà dans `hedging.py` et le mettre
-        en image, exactement comme `boss2_barrier_sweep.py` et
-        `boss3_heston_barrier.py` avant lui.
-    DÉBLOQUE : rien -- ferme l'Acte IV.
-    VALIDATION : `test_boss4_artefacts` -- vérifie que les DEUX fichiers
-        existent, que `convergence` a au moins 5 points croissants en
-        `n_steps`, que `slope_measured` est dans la même fourchette que le
-        test de 4.2 ([-0.8, -0.2]), et que les trois entrées de `pnl` ont bien
-        leurs 5 clés. Pas de nouvelle identité numérique ici -- tout a déjà
-        été validé quête par quête, ce script ne fait que les rejouer et les
-        tracer ensemble.
-    INDICE 1 (intuition) : ce script ne teste rien de nouveau, il RACONTE
-        l'acte -- reprends telles quelles les grilles et formules déjà
-        validées dans `tests/test_hedging.py` (`n_steps_grid`,
-        `sigma_impl`/`sigma_real`, `cost_rate`), pas besoin d'inventer de
-        nouveaux paramètres.
-    INDICE 2 (structure) :
-        - Panneau haut : boucle sur une grille de `n_steps` (comme dans
-          `test_hedging_error_moyenne_dans_ic_et_pente_log_log`), un
-          `gbm_paths` + `bs_delta_hedge_deltas` + `hedging_error` par point,
-          collecte `errors.std(ddof=1)`. `np.polyfit` sur `log(n_steps)` vs
-          `log(std)` donne `slope_measured` ; la droite théorique se trace
-          avec `std[0] * (n_steps_grid / n_steps_grid[0])**(-0.5)`.
-        - Panneau bas : UN SEUL jeu de trajectoires GBM (à `sigma_real`, pour
-          le modèle faux), `n_steps` fixé une fois pour toutes
-          (`n_steps_pnl`) : `hedging_error` (modèle correct, sur des
-          trajectoires à `sigma_impl` -- donc un DEUXIÈME jeu de
-          trajectoires, à `sigma_impl` cette fois), `vol_arbitrage_pnl`
-          (modèle faux, sur les trajectoires à `sigma_real`), et
-          `hedging_error_with_costs` (modèle correct + coûts, sur les
-          trajectoires à `sigma_impl`, `cost_rate` > 0).
-    INDICE 3 (formule) : rien de nouveau -- tous les appels existent déjà
+    QUEST BOSS 4 -- convergence and replication P&L [80 XP]
+    GOAL: assemble into a single figure the three interview-defensible
+        results announced at the top of the act -- the `n_rebal^{-1/2}`
+        convergence (4.2), the vol-arbitrage identity (4.3), and the effect
+        of transaction costs (4.4). Nothing new to compute: this boss only
+        calls what already exists in `hedging.py` and turns it into a
+        picture, exactly like `boss2_barrier_sweep.py` and
+        `boss3_heston_barrier.py` before it.
+    UNLOCKS: nothing -- closes Act IV.
+    VALIDATION: `test_boss4_artefacts` -- checks that BOTH files exist, that
+        `convergence` has at least 5 increasing points in `n_steps`, that
+        `slope_measured` sits in the same range as 4.2's test
+        ([-0.8, -0.2]), and that all three entries of `pnl` carry their 5
+        keys. No new numerical identity here -- everything was already
+        validated quest by quest, this script only replays them and plots
+        them together.
+    HINT 1 (intuition): this script tests nothing new, it TELLS the story of
+        the act -- reuse the grids and formulas already validated in
+        `tests/test_hedging.py` (`n_steps_grid`, `sigma_impl`/`sigma_real`,
+        `cost_rate`) as they are, no need to invent new parameters.
+    HINT 2 (structure):
+        - Top panel: loop over a grid of `n_steps` (as in
+          `test_hedging_error_moyenne_dans_ic_et_pente_log_log`), one
+          `gbm_paths` + `bs_delta_hedge_deltas` + `hedging_error` per point,
+          collect `errors.std(ddof=1)`. `np.polyfit` on `log(n_steps)` vs
+          `log(std)` gives `slope_measured`; the theoretical line is drawn
+          with `std[0] * (n_steps_grid / n_steps_grid[0])**(-0.5)`.
+        - Bottom panel: A SINGLE set of GBM paths (at `sigma_real`, for the
+          wrong model), `n_steps` fixed once and for all (`n_steps_pnl`):
+          `hedging_error` (correct model, on paths at `sigma_impl` -- hence
+          a SECOND set of paths, at `sigma_impl` this time),
+          `vol_arbitrage_pnl` (wrong model, on the paths at `sigma_real`),
+          and `hedging_error_with_costs` (correct model + costs, on the
+          paths at `sigma_impl`, `cost_rate` > 0).
+    HINT 3 (formula): nothing new -- every call already exists
         (`bs_delta_hedge_deltas`, `hedging_error`, `hedging_error_stats`,
-        `vol_arbitrage_pnl`, `hedging_error_with_costs`). Les percentiles du
-        JSON s'obtiennent avec `np.percentile(array, [5, 50, 95])`.
-    PIÈGE : les TROIS distributions du panneau du bas ne vivent pas sous le
-        même jeu de trajectoires ni le même budget -- "modèle correct" est
-        centré en zéro par construction (4.2), "modèle faux" ne l'est QUE si
-        `sigma_real != sigma_impl` (sinon il retombe sur "modèle correct"),
-        "avec coûts" n'est JAMAIS centré en zéro (une perte certaine, cf.
-        PIÈGE de `hedging_error_with_costs` en 4.4) -- ne pas s'étonner que
-        les trois histogrammes n'aient ni la même moyenne ni la même
-        étendue, c'est le point de la figure.
+        `vol_arbitrage_pnl`, `hedging_error_with_costs`). The JSON's
+        percentiles come from `np.percentile(array, [5, 50, 95])`.
+    PITFALL: the THREE distributions in the bottom panel do not live under
+        the same set of paths nor the same budget -- "correct model" is
+        centred at zero by construction (4.2), "wrong model" is centred
+        ONLY IF `sigma_real != sigma_impl` (otherwise it collapses back onto
+        "correct model"), "with costs" is NEVER centred at zero (a certain
+        loss, cf. the PITFALL of `hedging_error_with_costs` in 4.4) -- do
+        not be surprised that the three histograms share neither the same
+        mean nor the same spread, that is the point of the figure.
     """
     S0 = 100.0
     K = 100.0
@@ -143,21 +141,21 @@ def main() -> None:
     droite = stds[0] * (n_steps_grid / n_steps_grid[0])**(-0.5)
     slope_measured, _ = np.polyfit(np.log(n_steps_grid), np.log(stds), 1)
 
-    ax_haut.loglog(n_steps_grid, stds, "o", label="mesuré")
-    ax_haut.loglog(n_steps_grid, droite, "--", label="pente -1/2")
+    ax_haut.loglog(n_steps_grid, stds, "o", label="measured")
+    ax_haut.loglog(n_steps_grid, droite, "--", label="-1/2 slope")
     ax_haut.set_xlabel("n_rebal")
     ax_haut.set_ylabel("std(hedging_error)")
     ax_haut.legend()
-    
+
     ax.hist(hedging.portfolio_terminal_value(S_impl, deltas, r, T, V0=put_bs(S0,K,sigma_impl,r,T)) - np.maximum(K - S_impl[:, -1], 0),
-            bins=50, density=True, alpha=0.5, label="modèle correct")
+            bins=50, density=True, alpha=0.5, label="correct model")
 
     ax.hist(hedging.vol_arbitrage_pnl(paths=S_real, K=K, sigma_impl=sigma_impl, r=r, T=T,V0=put_bs(S0,K,sigma_impl,r,T), option="put")
-            ,bins=50, density=True, alpha=0.5, label="modèle faux")
+            ,bins=50, density=True, alpha=0.5, label="wrong model")
     ax.hist(hedging.hedging_error_with_costs(paths=S_impl,deltas=deltas, K = K, r=r, T=T,V0=put_bs(S0,K,sigma_impl,r,T), cost_rate = cost_rate, option="put"),
-            bins=50, density=True, alpha=0.5, label="avec coûts")
-    ax.set_xlabel("P&L de réplication")
-    ax.set_ylabel("densité")
+            bins=50, density=True, alpha=0.5, label="with costs")
+    ax.set_xlabel("replication P&L")
+    ax.set_ylabel("density")
     ax.legend()
     
   

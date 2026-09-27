@@ -1,13 +1,17 @@
 # PROGRESS — exotic-pricing-lab
 
-**XP : 630 / 660**  ·  Acte I bouclé à 190/220 (les digitales manquent) · Acte II **bouclé à 230/230** · Acte III **bouclé à 210/210**
+**XP : 1000 / 1000**  ·  Acte I **bouclé à 220/220** · Acte II **bouclé à
+230/230** · Acte III **bouclé à 210/210** · Acte IV **bouclé à 340/340**
 
-> **ACTE III BOUCLÉ.** Prochaine étape : ACTE IV — multi-actif (Cholesky) →
-> worst-of → autocall → BRC. Pas encore écrit : têtes de chapitre à poser.
-> Reste aussi la quête **1.5 (digitales, 30 XP)**, ouverte depuis l'Acte I —
-> c'est le seul trou du parcours, et 30 XP pour finir à 660/660.
+> **TOUT L'ARBRE ACTUEL EST BOUCLÉ.** 1.5 (digitales) a comblé le dernier trou
+> de l'Acte I ; l'Acte IV (hedging discret) est clos avec son BOSS 4. Prochaine
+> étape : l'acte suivant, mis de côté quand l'Acte IV est passé devant lui à la
+> demande explicite du prompt qui l'a ouvert — multi-actif par Cholesky →
+> worst-of → autocall → BRC worst-of sous Heston, le produit phare annoncé en
+> tête de `CLAUDE.md`.
 
-> Suite au vert : **48 passed, 0 xfailed**.
+> Suite au vert : **62 passed, 0 xfailed** (48 + 12 tests de l'Acte IV + 2 de
+> la quête 1.5).
 
 Règle du jeu : une quête n'est acquise que si son test de validation est **vert**
 contre une référence indépendante (formule fermée, parité, identité model-free).
@@ -17,7 +21,7 @@ retirer le marqueur. Retirer le marqueur avant d'avoir codé ne trompe personne.
 
 ---
 
-## ACTE I — Fondations (190 / 220 XP)
+## ACTE I — Fondations (220 / 220 XP) ✅
 
 | Quête | Statut | XP | Dépend de | Validation |
 |---|---|---|---|---|
@@ -25,10 +29,18 @@ retirer le marqueur. Retirer le marqueur avant d'avoir codé ne trompe personne.
 | 1.2 Pricer MC un-pas + IC 95% | ✅ | 20/20 | 1.1 | `test_mc_within_ci` |
 | 1.3 Antithétiques (un-pas) | ✅ | 20/20 | 1.2 | variance ÷ 2 mesurée |
 | 1.4 Delta MC en common random numbers | ✅ | 30/30 | 1.2 | `test_delta_crn` vs N(d1) |
-| 1.5 **Digitales (réplication call spread)** | ⬜ **OUVERTE** | **0/30** | 1.1 | *aucun code dans `src/`, aucun test — trou à combler* |
+| 1.5 Digitales (réplication call spread) | ✅ | 30/30 | 1.1 | `test_digital_call_bs_vs_mc` (IC) + `test_digital_call_replication_converge_en_h2` (ratio ~4.000) |
 | 1.6 `gbm_paths` multi-pas (cumsum vectorisé) | ✅ | 30/30 | 1.2 | `test_gbm_paths_shape_et_depart`, `_call_europeen`, `_loi_independante_de_n_steps` |
 | 1.7 Barrières DI / DO put + parité pathwise | ✅ | 40/40 | 1.6 | `test_di_do_van` (DI + DO = vanille, 1e-12) |
 | 1.8 Vol implicite (Newton, seed Manaster-Koenig) | ✅ | 30/30 | 1.1 | `test_implied_vol_call` (tolérance vega-dépendante) |
+
+### Séance 8 — la 1.5
+
+Call spread `(C(K-h) - C(K+h))/(2h)` contre `digital_call_bs` : ratio de
+convergence mesuré **3.999 / 3.9998 / 4.000** en divisant `h` par 2 à chaque
+fois (0.4 → 0.2 → 0.1 → 0.05) — O(h²) exact, à trois décimales de 4. Contre la
+formule fermée elle-même, `digital_call_bs` vs MC (N=200 000) :
+`0.53232` contre `0.53256 ± 0.00207`, dans l'IC.
 
 Restent en dette technique, non scorées : monitoring discret (prix vs `n_steps`,
 Broadie-Glasserman-Kou) et delta près de la barrière — les deux étaient au
@@ -281,9 +293,67 @@ Les trois pièges qui vont coûter le plus cher, annoncés :
 3. **`v_{t+dt}` utilisé dans le pas du spot** au lieu de `v_t` — le test de
    corrélation du premier pas est écrit pour ça.
 
-Ensuite (ACTE IV, verrouillé) : multi-actif par Cholesky → worst-of → autocall →
-BRC. Dette technique toujours ouverte : digitales (1.5, 30 XP), monitoring
-discret, delta près de la barrière.
+Ensuite : ACTE IV — hedging discret (voir plus bas), qui traite justement le
+dernier point de dette technique (delta près d'une barrière, quête 4.5).
+Restent ouverts : digitales (1.5, 30 XP), monitoring discret, et — après
+l'Acte IV — multi-actif par Cholesky → worst-of → autocall → BRC.
+
+---
+
+## ACTE IV — Hedging discret (340 / 340 XP) ✅
+
+Blocs TODO dans `src/hedging.py`, tests dans `tests/test_hedging.py` (12
+verts, 4.1 à 4.6 et `test_boss4_artefacts`), boss dans
+`scripts/boss4_hedging.py` (`figures/boss4_hedging.png`,
+`figures/boss4_results.json`).
+
+| Quête | Statut | XP | Dépend de | Validation |
+|---|---|---|---|---|
+| 4.1 Portefeuille auto-financé | ✅ | 30/30 | — | `test_autofinancement_deltas_arbitraires` (1e-12, deltas arbitraires) + 2 cas dégénérés |
+| 4.2 Erreur de hedging, bon modèle | ✅ | 50/50 | 4.1 | `test_hedging_error_moyenne_dans_ic_et_pente_log_log` — pente -0.485 mesurée |
+| 4.3 Vol arbitrage / modèle faux | ✅ | 50/50 | 4.2 | `test_vol_arbitrage_identite_gamma` — identité gamma-pondérée, signe MOINS |
+| 4.4 Coûts de transaction | ✅ | 40/40 | 4.2 | `test_transaction_costs_frequence_optimale` — pente coût +0.44, optimum RMS intermédiaire |
+| 4.5 Delta près d'une barrière | ✅ | 40/40 | 4.2 | `test_naive_barrier_hedge_degrade_pres_de_la_barriere` — ratio std 2.82, pente ≈0 (pas -0.5) |
+| 4.6 Delta-vega sous Heston | ✅ | 50/50 | 4.2, Acte III | `test_heston_delta_vega_reduit_la_variance` — ratio de variance 3.05 |
+| **BOSS 4** Convergence + P&L (figure) | ✅ | 80/80 | 4.2, 4.3, 4.4 | `test_boss4_artefacts` — pente -0.491, 3 scénarios de P&L distincts |
+
+Arbre de dépendance de l'acte :
+
+```
+4.1 (auto-financement)
+  └─ 4.2 (erreur de hedging, la brique commune)
+       ├─ 4.3 (vol arbitrage)
+       ├─ 4.4 (coûts de transaction)
+       ├─ 4.5 (barrière)
+       └─ 4.6 (Heston, dépend aussi de l'Acte III)
+            └─ BOSS 4
+```
+
+Le fil de l'acte, trois choses défendables en entretien : la **convergence**
+de l'erreur de hedging en `n_rebal^{-1/2}` (4.2), l'**identité de vol
+arbitrage** (4.3), et la **dégradation du delta près d'une barrière** (4.5) —
+le vrai problème métier, celui qui n'a pas de convergence à montrer, juste une
+cassure à documenter.
+
+### Séance 7 — les bugs qui ont coûté le plus cher
+
+Contrairement aux actes précédents, la plupart des bugs de cet acte n'étaient
+**pas** dans le code de l'étudiant — trois sont tombés dans les tests écrits
+par l'assistant, un bon rappel que « le test a raison » n'est pas un axiome.
+
+| Piège | Où | Nature | Coût |
+|---|---|---|---|
+| `B[-1]` au lieu de `B` dans le calcul de `V_T` | 4.1 | indexation scalaire d'un vecteur par path | invisible sur 2 des 3 tests (deltas dégénérés, où `B` est identique sur tous les paths par construction) — repéré seulement par le test à deltas ARBITRAIRES |
+| `deltas` reçu en paramètre mais recalculé en interne avec `sigma=0.2` en dur | 4.2 | paramètre ignoré + magic number | invisible tant que `sigma` du test coïncidait avec 0.20 |
+| **Référence de test manquant `exp(-r*t_i)` dans la somme de gamma** | 4.3 | formule de référence incomplète (bug du test, pas du code) | écart stable ~2.4%, NE DIMINUAIT PAS avec `n_steps` — a fait suspecter le code de l'étudiant avant qu'une dérivation par Itô révèle le terme manquant (l'erreur de couverture capitalise elle-même au taux r) |
+| Ligne `turnover += np.sum(...)` en trop, reliquat d'une version précédente | 4.4 | code mort qui double-compte un total et le réinjecte dans chaque colonne | pente log-log du coût mesurée à 1.48 au lieu de ~0.5 — repéré par comparaison avec la pente du turnover en actions seul |
+| Overlay vega ajouté avec le mauvais signe (`+n_vega*delta` au lieu de `-n_vega*delta`) | 4.6 | confusion position longue / courte dans la convention de `bs_delta_hedge_deltas` | ratio de variance mesuré sous 1 (l'overlay AGGRAVAIT la variance) au lieu d'être nettement au-dessus |
+
+Leçon transverse : un test qui donne un résultat plausible (bon signe, bon
+ordre de grandeur) peut quand même être faux d'un terme manquant — la
+vérification qui a débloqué 4.3 n'était pas « le signe est bon » mais
+« l'écart ne diminue pas avec `n_steps`, donc ce n'est pas un biais de
+discrétisation, c'est une formule incomplète ».
 
 ---
 

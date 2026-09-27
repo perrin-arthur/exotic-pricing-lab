@@ -12,10 +12,11 @@ import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 
 import numpy as np
+import pytest
 
 import barriers
 import implied_vol
-from bs import call_bs, put_bs, vega
+from bs import call_bs, put_bs, vega, digital_call_bs, digital_call_replication
 from mc_engine import gbm_paths, pricer_mc_call, delta_mc
 
 PARAMS = dict(S0=100, K=100, sigma=0.2, r=0.05, T=1)
@@ -132,3 +133,46 @@ def test_di_do_van():
     # Level: Monte-Carlo against analytics -> the tolerance is the CI. Outside
     # the loop, since it does not depend on H.
     assert abs(put_mc - put) < ci_van * 1.5
+
+
+def test_digital_call_bs_vs_mc():
+    """digital_call_bs contre une estimation Monte-Carlo indépendante.
+
+    Référence : moyenne actualisée de l'indicatrice 1{S_T > K} sur des
+    trajectoires GBM à un pas -- rien à voir avec la formule fermée testée.
+    """
+    S0, K, sigma, r, T = 100.0, 100.0, 0.2, 0.05, 1.0
+    N = 200_000
+    rng = np.random.default_rng(7)
+
+    ST = S0 * np.exp((r - 0.5 * sigma**2) * T + sigma * np.sqrt(T) * rng.standard_normal(N))
+    payoff = np.exp(-r * T) * (ST > K).astype(float)
+    price_mc = payoff.mean()
+    ci = 1.96 * payoff.std(ddof=1) / np.sqrt(N)
+
+    price = digital_call_bs(S0, K, sigma, r, T)
+    print(f"digital_call_bs={price:.5f}  MC={price_mc:.5f}+/-{ci:.5f}")
+
+    assert abs(price - price_mc) < ci * 1.5
+
+
+def test_digital_call_replication_converge_en_h2():
+    """La réplication par call spread converge vers la formule fermée en O(h^2).
+
+    Testé comme une PENTE (ratio de convergence quand h est divisé par 2),
+    pas comme un seuil sur une seule valeur de h -- une formule fausse rate le
+    taux de convergence, pas seulement le niveau.
+    """
+    S0, K, sigma, r, T = 100.0, 100.0, 0.2, 0.05, 1.0
+    ref = digital_call_bs(S0, K, sigma, r, T)
+
+    hs = [0.4, 0.2, 0.1, 0.05]
+    errors = [abs(digital_call_replication(S0, h, K, sigma, r, T) - ref) for h in hs]
+
+    print("h:", hs)
+    print("erreurs:", errors)
+
+    ratios = [errors[i] / errors[i + 1] for i in range(len(errors) - 1)]
+    print("ratios (attendu ~4, division par 2 de h -> erreur /4):", ratios)
+
+    assert all(3.0 < ratio < 5.0 for ratio in ratios)

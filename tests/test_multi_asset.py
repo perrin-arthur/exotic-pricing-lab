@@ -1,17 +1,12 @@
-"""ACTE V -- Multi-actif. Tests ecrits AVANT le code, quete 5.1 seulement.
+"""ACTE V -- Multi-actif : Cholesky, worst-of, BRC, autocall, sensibilites.
 
-Meme mecanique que les actes precedents : tout est en
-@pytest.mark.xfail(strict=True). Tant que la fonction leve NotImplementedError
--> XFAIL. Des que ton code est juste -> XPASS, la suite passe au rouge, et
-c'est TON signal pour retirer le marqueur.
+Ce qui est teste reste INDEPENDANT de l'implementation : idempotence du
+reparateur de correlation, positivite apres reparation d'une matrice
+incoherente, identite de martingale par actif, cas degeneres (n_assets=1,
+rho=1), decompositions exactes (BRC, autocall a une date). Aucun test ne
+compare le multi-actif a lui-meme.
 
 Lance : .venv/bin/python -m pytest tests/test_multi_asset.py -v
-
-Ce qui est teste est choisi pour rester INDEPENDANT de l'implementation :
-idempotence du reparateur de correlation sur une matrice deja valide, positivite
-apres reparation d'une matrice incoherente, identite de martingale par actif,
-cas degenere n_assets=1, correlation empirique reconstruite. Aucun test ne
-compare le multi-actif a lui-meme.
 """
 
 import sys, pathlib
@@ -49,7 +44,7 @@ def _half_width(v):
 
 
 # ---------------------------------------------------------------------------
-# QUETE 5.1 -- reparation de la matrice de correlation
+# Reparation de la matrice de correlation
 # ---------------------------------------------------------------------------
 
 
@@ -77,7 +72,7 @@ def test_repair_correlation_clip_repare_matrice_non_dp():
 
 
 # ---------------------------------------------------------------------------
-# QUETE 5.1 -- trajectoires correlees
+# Trajectoires correlees
 # ---------------------------------------------------------------------------
 
 
@@ -177,7 +172,7 @@ def test_correlated_gbm_paths_matrice_non_dp_ne_plante_pas():
 
 
 # ---------------------------------------------------------------------------
-# QUETE 5.2 -- worst-of DI put et cas degeneres
+# Worst-of DI put et cas degeneres
 # ---------------------------------------------------------------------------
 
 
@@ -285,7 +280,7 @@ def test_worst_of_di_put_ne_plante_pas_sur_matrice_non_dp():
 
 
 # ---------------------------------------------------------------------------
-# QUETE 5.3 -- BGK applique au worst-of (heuristique)
+# BGK applique au worst-of (heuristique)
 # ---------------------------------------------------------------------------
 
 
@@ -327,7 +322,7 @@ def test_worst_of_di_put_continuous_rho_proche_1_dans_ic_du_mono():
 
 
 # ---------------------------------------------------------------------------
-# QUETE 5.4 -- BRC (coupon / put worst-of vendu)
+# BRC (coupon / put worst-of vendu)
 # ---------------------------------------------------------------------------
 
 
@@ -367,7 +362,7 @@ def test_brc_price_barriere_lointaine_redonne_coupon_plus_zero_coupon():
 
 
 # ---------------------------------------------------------------------------
-# QUETE 5.5 -- autocall / Phoenix
+# Autocall / Phoenix
 # ---------------------------------------------------------------------------
 
 
@@ -435,23 +430,17 @@ def test_autocall_probabilite_rappel_monotone_en_rho_et_sigma():
 
 
 # ---------------------------------------------------------------------------
-# QUETE 5.6 -- sensibilites (delta par actif, vega, rho)
+# Sensibilites (delta par actif, vega, rho)
 # ---------------------------------------------------------------------------
 
 
 def test_worst_of_deltas_est_exactement_nul():
-    """Correction du scaffold initial (mon erreur, pas la tienne) : K et H
-    sont en PERFORMANCE (convention 5.2), donc le payoff ne depend QUE de
+    """K et H sont en PERFORMANCE : le payoff ne depend que de
     paths/paths[:,:,0] = exp(increments) -- S0 se simplifie EXACTEMENT,
     algebriquement, avant meme toute simulation. Bumper S0[i] ne peut donc
     JAMAIS changer le prix d'un produit 100% performance : le "delta spot"
-    d'un worst-of coteé en performance est IDENTIQUEMENT nul, pas juste
-    petit -- une identite model-free (pas de MC, pas de tolerance).
-
-    (L'ancienne version de ce test attendait deltas < 0, en supposant a tort
-    qu'un bump de S0 change la trajectoire en performance -- c'est faux par
-    construction, cf. le PIÈGE associe dans le TODO 5.6 qui est a relire avec
-    ce correctif en tete.)
+    d'un worst-of cote en performance est IDENTIQUEMENT nul, pas juste petit
+    -- une identite model-free (pas de MC, pas de tolerance).
     """
     deltas = worst_of_deltas(S0, SIGMA, RHO_TARGET, R, T, 30, 50_000,
                              K=1.0, H=0.7, h=1.0, seed=100)

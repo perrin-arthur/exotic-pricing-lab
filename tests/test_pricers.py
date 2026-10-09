@@ -179,7 +179,7 @@ def test_digital_call_replication_converge_en_h2():
 
 
 # ---------------------------------------------------------------------------
-# QUETE 5.3 -- correction de continuite (Broadie-Glasserman-Kou)
+# Correction de continuite (Broadie-Glasserman-Kou)
 # ---------------------------------------------------------------------------
 
 

@@ -165,50 +165,17 @@ def di_put_cv(paths: np.ndarray,
     return (estimate, half_width, c_hat, rho_hat)
 
 
-# ╔══════════════════════════════════════════════════════════════════╗
-# ║ QUÊTE 5.3 — Correction de continuité (Broadie-Glasserman-Kou) [40 XP] ║
-# ╚══════════════════════════════════════════════════════════════════╝
-# OBJECTIF   : la dette technique ouverte depuis 1.7 (voir le header de ce
-#              fichier) -- di_put/do_put ne monitorent la barriere qu'aux
-#              n_steps+1 dates simulees, jamais en continu. Un chemin qui
-#              plonge sous H ENTRE deux dates et remonte n'est jamais
-#              detecte : le prix MC discret porte un biais STRUCTUREL par
-#              rapport au prix d'un term sheet (barriere observee en
-#              continu), un biais qui ne disparait pas quand N grandit --
-#              seulement quand n_steps grandit.
-# DÉBLOQUE   : multi_asset.worst_of_di_put_continuous (Acte V, 5.3)
-# VALIDATION : pytest tests/test_pricers.py -k "bgk or continuous"
-#
-# INDICE 1 (intuition)  : Broadie, Glasserman et Kou (1997) montrent qu'un
-#     prix a monitoring DISCRET avec une barriere H est, en premiere
-#     approximation, egal au prix a monitoring CONTINU avec une barriere
-#     legerement DEPLACEE -- vers S0 pour un cas down (plus facile a
-#     toucher, ca compense les franchissements rates), a l'oppose de S0 pour
-#     un cas up. Le decalage depend de sigma et du pas dt = T/n_steps : plus
-#     dt est petit (n_steps grand), moins il y a de place pour un exces de
-#     parcours manque entre deux dates, moins la correction pese. Corollaire
-#     : n_steps -> l'infini, barriere ajustee -> H exactement.
-# INDICE 2 (structure)  : une fonction PURE (la formule du decalage, aucune
-#     simulation dedans -- teste-la independamment, sans Monte-Carlo) et un
-#     wrapper qui rappelle di_put en lui passant la barriere ajustee a la
-#     place de H. Le reste (payoff, actualisation, IC) ne change pas : toute
-#     la correction tient dans UNE substitution de H.
-# INDICE 3 (formule)    :
-#     beta = 0.5826   # = -zeta(1/2)/sqrt(2*pi), constante universelle BGK
-#     dt = T / n_steps
-#     H_ajustee = H * exp(+beta * sigma * sqrt(dt))   si direction == "down"
-#     H_ajustee = H * exp(-beta * sigma * sqrt(dt))   si direction == "up"
-#
-# PIÈGE : inverser le signe selon down/up -- verifie a la main sur un
-#         exemple ou tu sais ce qui doit se passer (H_ajustee plus proche de
-#         S0 pour un down, donc le knock-in doit devenir PLUS probable, donc
-#         le prix DI doit AUGMENTER par rapport au prix non corrige).
-# PIÈGE : sqrt(dt) et pas sqrt(T) ni sqrt(n_steps) -- dt DIMINUE quand
-#         n_steps grandit, c'est bien dt qu'on veut petit a la limite ;
-#         sqrt(n_steps) irait dans le mauvais sens.
-# PIÈGE : appliquer la correction a H mais garder le MEME H non corrige pour
-#         le payoff a maturite -- seule la condition de DECLENCHEMENT bouge,
-#         pas le strike ni le reste du payoff.
+# ---------------------------------------------------------------------------
+# Correction de continuite (Broadie-Glasserman-Kou)
+# ---------------------------------------------------------------------------
+# di_put/do_put ne monitorent la barriere qu'aux n_steps+1 dates simulees,
+# jamais en continu : un chemin qui plonge sous H entre deux dates et remonte
+# n'est jamais detecte, d'ou un biais structurel par rapport a un term sheet
+# (barriere observee en continu) qui ne disparait pas quand N grandit, mais
+# seulement quand n_steps grandit. Broadie, Glasserman et Kou (1997) montrent
+# qu'un prix a monitoring discret avec une barriere H est, en premiere
+# approximation, egal au prix a monitoring continu avec une barriere
+# legerement deplacee (vers S0 pour un down, a l'oppose pour un up).
 
 
 def bgk_barrier_correction(H: float,

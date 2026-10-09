@@ -31,41 +31,12 @@ Output contract, lu par le test jusqu'aux noms de cles :
       }
       Python floats only, json.dump rejette np.float64.
 
-OBJECTIF   : assembler en une seule figure les deux resultats qui ferment
-    l'acte -- la variance reduite par le control variate (reutilise sans
-    modification depuis l'Acte II/III, seule la source de EX change), et la
-    sensibilite du prix du BRC a la structure de correlation / au nombre
-    d'actifs (l'argument commercial du worst-of : plus d'actifs decorreles,
-    plus le coupon offert peut etre eleve, parce que le put vendu vaut plus
-    cher).
-
-INDICE 1 (intuition)  : le control variate le plus simple ici est la MEME
-    technique qu'en 2.3/BOSS3 -- un control dont l'esperance est connue sans
-    Monte-Carlo. Le nominal actualise seul (EX = exp(-r*T), payoff sans
-    aucune optionalite) est un control FAIBLE (rho payoff/control proche de
-    0, le nominal ne bouge jamais). Un control plus fort et toujours
-    model-free : le vanilla worst-of SANS barriere n'a pas de forme fermee,
-    mais le call/put sur la MOYENNE des performances, lui, n'est pas plus
-    simple -- le control qui marche reellement ici est le put worst-of SANS
-    barriere mais estime sur un budget de tirages separe et REUTILISE comme
-    si c'etait un prix "connu" serait de la triche (ce n'est pas model-free).
-    Solution retenue : reutiliser di_put_payoffs/control_variate de l'Acte II
-    avec le MONO-actif degenere (rho=1) comme reference de calibration du
-    c optimal -- a documenter precisement dans PROGRESS.md, c'est un choix
-    assume, pas une formule imposee.
-INDICE 2 (structure)  : reutilise multi_asset.brc_price, mc_engine.control_variate
-    et le sweep de parametres comme BOSS2/BOSS3 (une seule grille de tirages
-    par point de la courbe, CRN pour que la courbe ne tremble pas de bruit
-    MC d'un point a l'autre -- piege deja documente en BOSS2).
-INDICE 3 (formule)    : voir brc_price (5.4) et control_variate (2.1) --
-    aucune formule nouvelle dans ce script, seulement de l'orchestration.
-
-PIÈGE : une grille de tirages DIFFERENTE a chaque rho testee -- le bruit MC
-        se mélangerait a l'effet de rho, rendant la courbe illisible (meme
-        piege que BOSS 2 : CRN obligatoire pour un sweep de parametre).
-PIÈGE : oublier de caster les np.float64 en float avant json.dump -- erreur
-        a l'ecriture, pas a l'execution du pricing (piege deja documente en
-        BOSS4).
+Le control retenu est faible et model-free : `X = exp(-rT)*paths[:,0,-1]`
+(valeur actualisee du premier actif seul, `EX = S0[0]`, identite de
+martingale) -- `c_hat` reste petit (~0.001), gain modeste sur la demi-largeur
+(cf. PROGRESS.md, session 9). Une grille de tirages DIFFERENTE a chaque rho
+testee noierait l'effet de rho dans le bruit MC (meme piege qu'en BOSS 2) :
+une seule graine fixe par point de la courbe.
 """
 
 import sys, pathlib
@@ -87,38 +58,23 @@ FIGURES = ROOT / "figures"
 
 
 def main() -> None:
-    """Produce figures/boss5_brc_worstof.png and figures/boss5_results.json.
-
-    QUÊTE BOSS 5 — pricing complet BRC worst-of + figure [80 XP]
-    OBJECTIF   : voir le docstring du module (en tete de fichier).
-    DÉBLOQUE   : rien -- fin d'Acte V. Acte VI (Heston multi-actif, calibration
-        marche) reste planifie mais non ouvert (cf. PROGRESS.md).
-    VALIDATION : pytest tests/test_multi_asset.py::test_boss5_artefacts
-    """
+    """Produce figures/boss5_brc_worstof.png and figures/boss5_results.json."""
     coupon = 0.05
     barrier = 0.7
-    #S0 type ndarray ici
     S0 = np.array([100.0, 100.0])
     sigma = np.array([0.2, 0.2])
     r = 0.05
     T = float(1.0)
     n_steps = 50
     N = 100_000
-    paths = multi_asset.correlated_gbm_paths(S0, sigma, np.array([[1.0, 0.5], [0.5, 1.0]]), r, T, n_steps, N
-                                             , rng=np.random.default_rng(seed=42))
-    obs_steps = np.arange(0, n_steps + 1, 10)
-    price_brc = multi_asset.brc_price(paths,coupon, barrier, r, T)
-    
-    #affichage du prix du BRC contre rho (correlation entre les 2 actifs de reference S0/SIGMA), a H, C, N fixes -- MC brut ET avec control variate reutilise de l'Acte II
+
     rho_values = np.linspace(0.0, 1.0, 5)
     prices_mc = []
     half_widths_mc = []
     prices_cv = []
     half_widths_cv = []
     c_hats = []
-    X = np.exp(-r*T)*paths[:,0,-1]
-    #brc_price sans moyenne
-    
+
     for rho in rho_values:
         rho_matrix = np.array([[1.0, rho], [rho, 1.0]])
         paths = multi_asset.correlated_gbm_paths(S0, sigma, rho_matrix, r, T, n_steps, N
@@ -127,6 +83,7 @@ def main() -> None:
         knock_in = perf.min(axis=1) < barrier
         put_payoff = np.maximum(1.0 -perf[:,-1],0)*knock_in
         Y = np.exp(-r*T) * (1.0 + coupon - put_payoff)
+        X = np.exp(-r*T) * paths[:, 0, -1]
         price_mc, half_width_mc = multi_asset.brc_price(paths,coupon, barrier, r, T)
         prices_mc.append(price_mc)
         half_widths_mc.append(half_width_mc)

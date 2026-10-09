@@ -9,12 +9,20 @@ Act V **closed at 350/350** ✅
 > pricer, control variate reused from Act II, boss figure + sweep. Session
 > notes and pitfalls below.
 >
-> Act VI (Heston calibration on market data, SVI as a second baseline
-> alongside flat-vol BS) is planned and agreed with Arthur but not yet
-> opened — no files exist for it yet. Arthur now wants the MULTI-ASSET
-> extension specifically (joint calibration + correlation from real data),
-> which widens the original Act VI scope agreed before Act V started — scope
-> and data source to be pinned down before scaffolding.
+> **ACT VI 🔓 OPENED — quest 6.1 only.** Scope locked in with Arthur: Heston
+> calibrated on REAL market data (yfinance, 3 commodity ETFs: GLD, SLV, USO —
+> yfinance exposes no option chain on raw commodity futures, only on the
+> listed ETFs that replicate them), two-step multi-asset extension (each name
+> calibrated mono-asset as in Act III, THEN correlation reconstructed from
+> historical returns — no joint calibration: no liquid multi-asset options
+> market to calibrate one against), SVI as a per-name second baseline
+> (no standard multi-asset SVI), and — Arthur's addition — a temporal
+> backtest (quest 6.6) testing a falsifiable hypothesis: Heston's imposed
+> structure gives more day-to-day parameter stability and better J+1
+> predictive power than SVI's purely descriptive fit, even though SVI wins
+> on intra-day RMSE. Pacing: one quest at a time, like every prior act — only
+> 6.1 is scaffolded in code this session, the rest of the table below is a
+> locked (🔒) roadmap, not yet opened.
 
 > Green suite: **88 passed, 0 xfailed**.
 
@@ -490,3 +498,43 @@ reference**. An off-centre control yields a plausible price and a
 half-width that narrows — the more wrong it is, the more precise it looks.
 Hence the repo's rule: validate against a closed form or a parity identity,
 never against "it looks about right".
+
+---
+
+## ACT VI — Heston calibration on real market data, multi-asset (0 / 400 XP) 🔓
+
+🔓 **OPENED — quest 6.1 only.** TODO block in `src/market_data.py` (new),
+tests in `tests/test_market_data.py` (new, 2 xfailed at opening). Quests 6.2
+through BOSS 6 are locked — not scaffolded, no files, no TODO — until 6.1 is
+green. Data: yfinance, 3 commodity ETFs (GLD, SLV, USO — raw commodity
+futures have no option chain on yfinance, only the ETFs that replicate them
+do). Scope: two-step multi-asset (mono-asset Heston per name, THEN
+correlation reconstructed from historical returns — no joint calibration).
+SVI: per-name second baseline. 6.6 is Arthur's addition: a temporal backtest.
+
+| Quest | Status | XP | Depends on | Validation |
+|---|---|---|---|---|
+| 6.1 Market data ingestion & cleaning (yfinance, GLD/SLV/USO) | 🔓 | 0/40 | 1.1 | `test_clean_option_chain_respecte_parite_forward` — forward parity on cleaned mid-quotes, tolerance scaled to bid-ask spread |
+| 6.2 Per-name Heston calibration on the market smile | 🔒 | 0/60 | 6.1, 3.2/3.3 | TBD when opened |
+| 6.3 Per-name SVI calibration (second baseline) | 🔒 | 0/50 | 6.1, 1.8 | TBD when opened |
+| 6.4 Correlation reconstructed from historical returns | 🔒 | 0/30 | 6.1, 5.1 | TBD when opened |
+| 6.5 Heston vs SVI vs flat BS — intra-day out-of-sample (strike/expiry holdout) | 🔒 | 0/40 | 6.2, 6.3 | TBD when opened |
+| 6.6 Temporal backtest — parameter stability + J+1 predictive power | 🔒 | 0/50 | 6.2, 6.3 | TBD when opened |
+| 6.7 Worst-of/BRC pricing on real calibrated marginals + reconstructed correlation | 🔒 | 0/50 | 6.2, 6.4, Act V | TBD when opened |
+| **BOSS 6** Fully market-calibrated BRC worst-of + figure | 🔒 | 0/80 | 6.1–6.7 | TBD when opened |
+
+### 6.6 — the hypothesis to settle (Arthur's addition, not originally scoped)
+
+SVI is a purely descriptive fit (5 free parameters per day, no temporal
+constraint): it will fit the day's smile better than Heston almost always —
+expected, not a result. Heston imposes structure (CIR + correlation).
+Hypothesis under test: **Heston, calibrated on a rolling window of days,
+gives day-to-day parameters that are more STABLE than SVI's, and its day-J
+parameters predict the day-J+1 smile better (no recalibration) than SVI's —
+even though SVI wins on intra-day RMSE.** Planned validation (once 6.6 is
+scaffolded, after 6.2/6.3): day-to-day coefficient of variation per
+parameter (Heston vs SVI) on a real rolling window, plus a J+1 *prediction*
+RMSE (parameters frozen at day J, applied to the day-J+1 smile) compared
+across Heston, SVI, and a naive "yesterday's vol" baseline. The pedagogical
+trap this is built to catch: a better intra-day fit does not imply better
+predictive power — that has to be shown with numbers, not assumed.

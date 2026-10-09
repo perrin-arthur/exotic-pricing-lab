@@ -176,3 +176,58 @@ def test_digital_call_replication_converge_en_h2():
     print("ratios (expected ~4, halving h -> error /4):", ratios)
 
     assert all(3.0 < ratio < 5.0 for ratio in ratios)
+
+
+# ---------------------------------------------------------------------------
+# QUETE 5.3 -- correction de continuite (Broadie-Glasserman-Kou)
+# ---------------------------------------------------------------------------
+
+
+
+def test_bgk_barrier_correction_sens_et_limite():
+    """Verification PURE de la formule -- aucun Monte-Carlo ici.
+
+    Sens de la correction (vers S0 pour un down, a l'oppose pour un up) et
+    limite n_steps -> l'infini (dt -> 0, la correction doit s'effacer).
+    """
+    H, sigma, T = 90.0, 0.25, 1.0
+
+    H_down = barriers.bgk_barrier_correction(H, sigma, T, n_steps=20, direction="down")
+    assert H_down > H
+
+    H_up = barriers.bgk_barrier_correction(H, sigma, T, n_steps=20, direction="up")
+    assert H_up < H
+
+    # dt = T/n_steps decroit lentement (en 1/n_steps), l'ecart decroit en
+    # sqrt(dt) -- pas en 1/n_steps. A n_steps=20 vs 100_000, l'ecart doit
+    # avoir nettement retreci (pas s'annuler a 1e-3 pres, ce serait
+    # demander sqrt(dt) ~1e-5, donc n_steps ~1e8).
+    H_grossier = barriers.bgk_barrier_correction(H, sigma, T, n_steps=20, direction="down")
+    H_fin = barriers.bgk_barrier_correction(H, sigma, T, n_steps=100_000, direction="down")
+    assert (H_fin - H) < 0.2 * (H_grossier - H)
+
+
+
+def test_di_put_continuous_reduit_le_biais_de_monitoring():
+    """La correction BGK doit rapprocher le prix a monitoring discret du prix
+    quasi-continu, plus que le prix non corrige -- a n_steps grossier.
+
+    Reference "quasi-continue" : memes parametres, n_steps tres fin (400),
+    N large pour que le bruit MC reste petit devant le biais mesure. Aucune
+    comparaison du code contre lui-meme : la reference est une discretisation
+    beaucoup plus fine, pas la meme fonction.
+    """
+    S0, K, H, r, T, sigma = 100.0, 100.0, 85.0, 0.05, 1.0, 0.25
+    N = 100_000
+
+    paths_ref = gbm_paths(S0, sigma, r, T, n_steps=400, N=N, rng=np.random.default_rng(0))
+    price_ref, _ = barriers.di_put(paths_ref, K, H, r, T)
+
+    for n_steps in (10, 20):
+        paths = gbm_paths(S0, sigma, r, T, n_steps=n_steps, N=N, rng=np.random.default_rng(1))
+        price_raw, _ = barriers.di_put(paths, K, H, r, T)
+        price_corr, _ = barriers.di_put_continuous(paths, K, H, r, T, sigma)
+
+        err_raw = abs(price_raw - price_ref)
+        err_corr = abs(price_corr - price_ref)
+        assert err_corr < err_raw

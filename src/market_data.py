@@ -13,6 +13,8 @@ option chain on raw commodity futures, only on the listed ETFs that
 replicate them).
 """
 
+from datetime import date
+
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -34,7 +36,10 @@ def fetch_underlying_history(ticker: str, period: str = "2y") -> pd.Series:
     pd.Series of adjusted close prices, indexed by date, ticker name as
     `.name`.
     """
-    raise NotImplementedError("QUÊTE 6.1")
+    hist = yf.Ticker(ticker).history(period=period, auto_adjust=True)
+    close = hist["Close"].dropna().astype(float)
+    close.name = ticker
+    return close
 
 
 def fetch_option_chain(ticker: str, S0: float, max_expiries: int = 4) -> pd.DataFrame:
@@ -61,7 +66,26 @@ def fetch_option_chain(ticker: str, S0: float, max_expiries: int = 4) -> pd.Data
         volume       : float, traded volume of the day (NaN if not reported)
         openInterest : float, open interest (NaN if not reported)
     """
-    raise NotImplementedError("QUÊTE 6.1")
+    tk = yf.Ticker(ticker)
+    today = date.today()
+    frames = []
+    for expiry in list(tk.options)[:max_expiries]:
+        T = (date.fromisoformat(expiry) - today).days / 365.0
+        chain = tk.option_chain(expiry)
+        for typ, side in (("call", chain.calls), ("put", chain.puts)):
+            f = pd.DataFrame({
+                "strike": side["strike"].astype(float),
+                "expiry": expiry,
+                "T": T,
+                "type": typ,
+                "bid": side["bid"].astype(float),
+                "ask": side["ask"].astype(float),
+                "volume": side["volume"].astype(float),
+                "openInterest": side["openInterest"].astype(float),
+            })
+            f["mid"] = (f["bid"] + f["ask"]) / 2
+            frames.append(f)
+    return pd.concat(frames, ignore_index=True)
 
 
 def clean_option_chain(chain: pd.DataFrame, S0: float, r: float, q: float = 0.0,

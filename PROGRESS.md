@@ -532,7 +532,7 @@ SVI: per-name second baseline. 6.6 is Arthur's addition: a temporal backtest.
 
 | Quest | Status | XP | Depends on | Validation |
 |---|---|---|---|---|
-| 6.1 Market data ingestion & cleaning (yfinance, GLD/SLV/USO) | 🔓 | 0/40 | 1.1 | Offline half done: `clean_option_chain` + 4 green synthetic tests (rejection per rule, parity exact to 1e-10 on BS chain, anti-circularity on S0/r/q, missing-column guard). Real-data tests still xfail: `fetch_*` blocked by network policy (Yahoo hosts 403) |
+| 6.1 Market data ingestion & cleaning (yfinance, GLD/SLV/USO) | 🔓 | 0/40 | 1.1 | `clean_option_chain` + 4 green synthetic tests. `fetch_*` implemented once Yahoo was allowed. `test_fetch_option_chain_colonnes_et_types` now XPASS(strict): marker to remove by Arthur. `test_clean_option_chain_respecte_parite_forward` still fails: 8 of 73 pairs out of bid-ask band, residual median −0.27 on every expiry, consistent with spot (last close 366.61) sitting ~0.17 above the implied forward (≈366.44). Open question, not a filter bug. |
 | 6.2 Per-name Heston calibration on the market smile | 🔒 | 0/60 | 6.1, 3.2/3.3 | TBD when opened |
 | 6.3 Per-name SVI calibration (second baseline) | 🔒 | 0/50 | 6.1, 1.8 | TBD when opened |
 | 6.4 Correlation reconstructed from historical returns | 🔒 | 0/30 | 6.1, 5.1 | TBD when opened |

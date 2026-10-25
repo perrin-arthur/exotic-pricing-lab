@@ -46,12 +46,17 @@ def test_fetch_option_chain_colonnes_et_types():
 def test_clean_option_chain_respecte_parite_forward():
     """The independent reference: forward parity on surviving mid-quotes.
 
-    C - P = S0*exp(-q*T) - K*exp(-r*T), for options sharing the same strike
-    and expiry. Checked PER EXPIRY (q may differ across names, and across
-    expiries if the ETF's roll cost is not flat in time -- see src pitfalls).
-    The residual must fall inside a band set by the OBSERVED bid-ask spread,
-    not an arbitrary absolute tolerance: the spot used here is never exactly
-    simultaneous with the option quotes.
+    Parity for options sharing a strike K and expiry T reads
+    C - P = (F_T - K) * exp(-r*T), where F_T is the forward for that expiry.
+    The forward is NOT taken from the spot: the spot is never simultaneous with
+    the option quotes, and a spot-based check only measures that lag. Instead
+    F_T is estimated from the parity itself, per expiry, as the median over
+    strikes of K + exp(r*T) * (C - P). The residual of each pair is then
+    measured against that forward, so a common spot offset cannot leak in.
+
+    Checked PER EXPIRY (the forward differs across expiries; q or carry may
+    too, see src pitfalls). The residual must fall inside a band set by the
+    OBSERVED bid-ask spread, not an arbitrary absolute tolerance.
     """
     hist = fetch_underlying_history(TICKER, period="5d")
     S0 = float(hist.iloc[-1])
@@ -64,15 +69,21 @@ def test_clean_option_chain_respecte_parite_forward():
     common = calls.index.intersection(puts.index)
     assert len(common) > 5, "pas assez de paires call/put survivantes pour tester la parité"
 
-    C = calls.loc[common, "mid"]
-    P = puts.loc[common, "mid"]
+    C = calls.loc[common, "mid"].to_numpy()
+    P = puts.loc[common, "mid"].to_numpy()
     K = np.array([k for k, _ in common])
+    expiry = np.array([e for _, e in common])
     T = calls.loc[common, "T"].to_numpy()
     spread = (calls.loc[common, "ask"] - calls.loc[common, "bid"]).to_numpy() + \
              (puts.loc[common, "ask"] - puts.loc[common, "bid"]).to_numpy()
 
-    forward_rhs = S0 - K * np.exp(-R * T)
-    residual = (C.to_numpy() - P.to_numpy()) - forward_rhs
+    residual = np.empty(len(common))
+    for e in np.unique(expiry):
+        m = expiry == e
+        assert m.sum() >= 3, f"échéance {e} : moins de 3 paires, forward non estimable"
+        growth = np.exp(R * T[m])
+        forward = np.median(K[m] + growth * (C[m] - P[m]))   # F_T from parity alone
+        residual[m] = (C[m] - P[m]) - (forward - K[m]) / growth
 
     assert np.all(np.abs(residual) < spread), (
         "résidu de parité hors de la bande de bid-ask -- le nettoyage a "

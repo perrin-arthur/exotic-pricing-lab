@@ -26,7 +26,6 @@ TICKER = "GLD"
 R = 0.045  # approximate short rate at fetch time; not the point of this test
 
 
-@pytest.mark.xfail(strict=True, reason="QUÊTE 6.1")
 def test_fetch_option_chain_colonnes_et_types():
     """Sanity shape/columns on a real fetch -- one ticker, one call."""
     hist = fetch_underlying_history(TICKER, period="5d")
@@ -42,7 +41,6 @@ def test_fetch_option_chain_colonnes_et_types():
     assert np.allclose(chain["mid"], (chain["bid"] + chain["ask"]) / 2)
 
 
-@pytest.mark.xfail(strict=True, reason="QUÊTE 6.1")
 def test_clean_option_chain_respecte_parite_forward():
     """The independent reference: forward parity on surviving mid-quotes.
 

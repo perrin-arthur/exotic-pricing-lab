@@ -42,7 +42,8 @@ def fetch_underlying_history(ticker: str, period: str = "2y") -> pd.Series:
     return close
 
 
-def fetch_option_chain(ticker: str, S0: float, max_expiries: int = 4) -> pd.DataFrame:
+def fetch_option_chain(ticker: str, S0: float, max_expiries: int = 4,
+                       min_days: int = 0, max_days: int | None = None) -> pd.DataFrame:
     """Raw option chain (calls and puts, several expiries) for one ticker.
 
     Params
@@ -50,7 +51,11 @@ def fetch_option_chain(ticker: str, S0: float, max_expiries: int = 4) -> pd.Data
     ticker       : yfinance symbol, e.g. "GLD".
     S0           : current spot, used only to help the caller later restrict
                    strikes near the money -- not applied as a filter here.
-    max_expiries : how many of the nearest listed expiries to pull.
+    max_expiries : how many of the nearest listed expiries to pull, after the
+                   days window below is applied.
+    min_days     : skip expiries closer than this many calendar days. Use it to
+                   reach past the weeklies for a term structure.
+    max_days     : skip expiries further than this many calendar days (None: no cap).
 
     Returns
     -------
@@ -69,7 +74,13 @@ def fetch_option_chain(ticker: str, S0: float, max_expiries: int = 4) -> pd.Data
     tk = yf.Ticker(ticker)
     today = date.today()
     frames = []
-    for expiry in list(tk.options)[:max_expiries]:
+    expiries = []
+    for expiry in tk.options:
+        days = (date.fromisoformat(expiry) - today).days
+        if days < min_days or (max_days is not None and days > max_days):
+            continue
+        expiries.append(expiry)
+    for expiry in expiries[:max_expiries]:
         T = (date.fromisoformat(expiry) - today).days / 365.0
         chain = tk.option_chain(expiry)
         for typ, side in (("call", chain.calls), ("put", chain.puts)):

@@ -22,6 +22,23 @@ from scipy.integrate import quad
 from implied_vol import implied_vol_call
 
 
+def feller_holds(kappa: float, theta: float, xi: float) -> bool:
+    """Feller condition for the CIR variance: 2*kappa*theta >= xi**2.
+
+    When it holds, the variance process never reaches zero in continuous time.
+    When it fails, it does, and an Euler scheme needs truncation (see
+    heston_paths). The boundary case 2*kappa*theta == xi**2 counts as holding.
+
+    Returns
+    -------
+    bool : True if the condition holds, False otherwise.
+
+    TODO (quest, Act III audit): implement the one-line test. Do not compare
+    with a tolerance, the boundary is exact by definition.
+    """
+    raise NotImplementedError("feller_holds: TODO, see docstring")
+
+
 def heston_paths(S0: float,
                  v0: float,
                  r: float,

@@ -24,7 +24,8 @@ Act V **closed at 350/350** ✅
 > 6.1 is scaffolded in code this session, the rest of the table below is a
 > locked (🔒) roadmap, not yet opened.
 
-> Green suite: **88 passed, 0 xfailed**.
+> Green suite: **90 passed, 3 xfailed** — 2 from quest 6.1 (stubs), 1 from the
+> Feller helper (Act III audit, see below).
 
 Rule of the game: a quest is only earned once its validation test is
 **green** against an independent reference (closed form, parity, model-free
@@ -315,6 +316,23 @@ The three pitfalls that will cost the most, flagged in advance:
    trap"): correct price at T=1, nonsensical at T=5.
 3. **`v_{t+dt}` used in the spot's step** instead of `v_t` — the first-step
    correlation test is written precisely to catch this.
+
+### Audit — two gaps closed on Acts II and III (no code of the acts changed)
+
+Brief re-read against the repo: most items were already in place. Two were
+not covered by a test:
+
+- **Zero-correlation control** (`test_cv_correlation_nulle_gain_nul`, green).
+  Independent Y and X: `rho_hat` and `c_hat` vanish, half-width ratio stays
+  at 1, estimator still unbiased. Written green, not xfail: the code already
+  passes it, and a strict xfail on passing code would fail the suite.
+- **Feller condition** (`feller_holds` stub in `src/heston.py`, body left to
+  Arthur, `test_feller_holds_frontiere` strict xfail; `test_heston_paths_feller_viole_reste_positif`
+  green). The violated regime (2κθ = 0.04 < ξ² = 0.25) is exercised: variance
+  stays ≥ 0 and finite, and the zero boundary is reached on > 5% of paths.
+
+No new unscored debt. Monitoring (BGK, 5.3), digitals (1.5) and delta near a
+barrier (4.5) were already closed in the sections above.
 
 Next: ACT IV — discrete hedging (see below), which tackles exactly the last
 piece of technical debt (delta near a barrier, quest 4.5). Still open:

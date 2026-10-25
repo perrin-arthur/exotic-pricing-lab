@@ -13,10 +13,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "src"))
 import json
 
 import numpy as np
+import pytest
 
 from bs import call_bs
-from heston import (heston_call, heston_cf, heston_paths, heston_put,
-                    heston_smile)
+from heston import (feller_holds, heston_call, heston_cf, heston_paths,
+                    heston_put, heston_smile)
 
 # Reference parameter set. Feller holds: 2*kappa*theta = 0.12 > 0.09 = xi^2, so
 # the variance does not stick at zero -- these tests measure the healthy regime,
@@ -151,6 +152,41 @@ def test_heston_paths_correlation_du_premier_pas():
     assert abs(Z_v.std(ddof=1) - 1.0) < 0.02      # correctly normalised
     assert abs(Z_S.std(ddof=1) - 1.0) < 0.02
     assert abs(rho_hat - HP["rho"]) < 0.01
+
+
+def test_heston_paths_feller_viole_reste_positif():
+    """Feller violated: 2*kappa*theta = 0.04 < xi^2 = 0.25, documented here.
+
+    The CIR variance hits zero in continuous time, and the Euler scheme must
+    cope with it. Two properties are checked: the stored variance stays
+    non-negative and finite, and the zero boundary is actually reached on a
+    substantial share of paths (otherwise the test would be measuring the
+    healthy regime again, not the one it claims to cover).
+
+    No price is compared here: under full truncation the mean of v_T is biased
+    when Feller fails, so there is no reference to test against. The bias
+    itself is what heston_paths' docstring documents.
+    """
+    params = dict(HP, kappa=0.5, theta=0.04, xi=0.5)
+    S, v = heston_paths(**params, n_steps=250, N=50_000,
+                        rng=np.random.default_rng(8))
+
+    assert np.all(v >= 0.0)
+    assert np.all(np.isfinite(S))
+    assert (v == 0.0).any(axis=1).mean() > 0.05    # boundary reached often
+
+
+@pytest.mark.xfail(strict=True, reason="FELLER: feller_holds non implémenté (TODO)")
+def test_feller_holds_frontiere():
+    """The condition 2*kappa*theta >= xi^2, including the exact boundary.
+
+    Boundary case uses dyadic values (0.125, 0.5, 1.0) so that 2*kappa*theta and
+    xi^2 are exactly representable and equal in floating point. Anything else
+    would make the test depend on rounding.
+    """
+    assert feller_holds(kappa=HP["kappa"], theta=HP["theta"], xi=HP["xi"])   # 0.12 > 0.09
+    assert not feller_holds(kappa=0.5, theta=0.04, xi=0.5)                   # 0.04 < 0.25
+    assert feller_holds(kappa=1.0, theta=0.125, xi=0.5)                      # 0.25 == 0.25
 
 
 # ---------------------------------------------------------------------------

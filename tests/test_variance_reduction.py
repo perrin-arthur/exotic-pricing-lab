@@ -209,6 +209,29 @@ def test_cv_degenere_Y_egal_X():
     assert abs(rho_hat - 1.0) < 1e-10
 
 
+def test_cv_correlation_nulle_gain_nul():
+    """Y and X independent: the control carries no information, the gain is zero.
+
+    With c estimated on the sample, the half-width ratio is exactly
+    sqrt(1 - rho_hat^2), so it sits at 1 whenever rho_hat is near 0. Unbiasedness
+    is still required: a useless control must not shift the mean either.
+
+    Seed fixed. Thresholds sit a few sampling standard deviations out for
+    N = 200,000 (sd of rho_hat ~ 0.002, sd of c_hat ~ 0.002).
+    """
+    rng = np.random.default_rng(11)
+    N = 200_000
+    Y = 3.0 + rng.standard_normal(N)
+    X = 1.0 + rng.standard_normal(N)       # independent of Y, EX = 1 known
+
+    est, hw, c_hat, rho_hat = control_variate(Y, X, 1.0)
+
+    assert abs(rho_hat) < 0.01
+    assert abs(c_hat) < 0.01
+    assert abs(hw/_half_width(Y) - 1.0) < 0.01          # no gain
+    assert abs(est - 3.0) < _half_width(Y) * 1.5       # still unbiased
+
+
 # ---------------------------------------------------------------------------
 # Control variate applied to the down-and-in put
 # ---------------------------------------------------------------------------

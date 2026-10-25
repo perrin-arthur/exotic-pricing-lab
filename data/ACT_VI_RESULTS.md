@@ -126,3 +126,35 @@ Le prix Heston dépend d'un calibrage qui ne colle pas au marché (section 2). L
 - **6.6** (test temporel) : un seul snapshot, il en faut 5. Non exécuté.
 - **Surface SVI sans arbitrage** : non construite. Il faudrait une paramétrisation qui impose la monotonie en T et la positivité du papillon.
 - **Heston sur le marché** : pas de jeu de paramètres qui tombe dans la bande bid-ask.
+
+## 8. Surface SSVI sans arbitrage (correction de l'arbitrage, section 3)
+
+Paramétrisation Gatheral–Jacquier : une surface, paramètres globaux ρ, η, γ partagés par toutes les échéances, un θ (variance totale ATM) par échéance. Vérifications de calendrier et de papillon sur une grille fine (1201 points). Résultat : **zéro violation** pour les trois noms.
+
+| nom | ρ | η | γ | dans la bande | médiane |res| | holdout dans la bande | holdout médiane |
+|---|---|---|---|---|---|---|---|
+| GLD | -0.095 | 1.101 | 0.468 | 31.2% | 1.70 | 45.2% | 1.20 |
+| SLV | +0.015 | 1.398 | 0.413 | 41.6% | 1.32 | 66.7% | 0.88 |
+| USO | +0.151 | 0.708 | 0.575 | 83.7% | 0.42 | 79.7% | 0.44 |
+
+L'abritrage est bien éliminé, mais la forme partagée coûte de l'ajustement : 31 / 42 / 84 % contre 89 / 94 / 99.8 % pour des tranches indépendantes. Le poids de pénalité n'y change rien (testé 0.5, 5, 50) : la contrainte est la structure, pas la pénalité.
+
+## 9. Heston et Bates, multi-départs (section 2)
+
+12 départs quasi-aléatoires (Sobol) par nom et par modèle. Meilleur minimum trouvé, pas de preuve d'optimum global.
+
+| nom | modèle | dans la bande | médiane |res| | SSE meilleur | SSE min / médiane / max sur les départs |
+|---|---|---|---|---|---|
+| GLD | heston | 21.0% | 2.17 | 17339 | 17339 / 17339 / 17339 |
+| GLD | bates | 46.6% | 1.09 | 8828 | 8828 / 14528 / 16175 |
+| SLV | heston | 32.5% | 1.54 | 8672 | 8672 / 8672 / 8672 |
+| SLV | bates | 48.8% | 1.03 | 5597 | 5597 / 5597 / 6651 |
+| USO | heston | 69.6% | 0.59 | 1977 | 1977 / 1977 / 1977 |
+| USO | bates | 84.0% | 0.50 | 713 | 713 / 713 / 713 |
+
+Heston : un seul minimum trouvé depuis tous les départs, la borne ξ = 3 est atteinte sur USO. Bates améliore nettement (47 / 49 / 84 %) mais n'atteint pas 80 % sur GLD et SLV. GLD est multimodal (SSE de 8 800 à 16 200 selon le départ).
+
+## 10. Backtest 6.6
+
+Non exécuté sur des données réelles : un seul snapshot, il en faut 5. La logique est écrite (`src/backtest.py`) et vérifiée sur une série de contrôle fabriquée à partir du snapshot. Ces chiffres ne sont pas des résultats et ne sont pas enregistrés.
+

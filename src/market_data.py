@@ -55,33 +55,60 @@ def fetch_option_chain(ticker: str, S0: float, max_expiries: int = 4) -> pd.Data
         T       : float, years to expiry, ACT/365 from TODAY (not a fixed
                   date -- this must be computed at call time)
         type    : 'call' or 'put'
-        bid     : float
-        ask     : float
-        mid     : float, (bid + ask) / 2
+        bid          : float
+        ask          : float
+        mid          : float, (bid + ask) / 2
+        volume       : float, traded volume of the day (NaN if not reported)
+        openInterest : float, open interest (NaN if not reported)
     """
     raise NotImplementedError("QUÊTE 6.1")
 
 
-def clean_option_chain(chain: pd.DataFrame, S0: float, r: float, q: float = 0.0) -> pd.DataFrame:
+def clean_option_chain(chain: pd.DataFrame, S0: float, r: float, q: float = 0.0,
+                       max_rel_spread: float = 0.5) -> pd.DataFrame:
     """Filter a raw option chain down to quotes worth calibrating on.
 
-    Must reject (at least): crossed quotes (bid > ask), zero or missing
-    bid/ask, zero volume AND zero open interest together (a stale quote
-    nobody has traded), and strikes deep enough ITM/OTM that the spread
-    dominates the mid-price.
+    A row survives only if all four hold:
+        1. bid and ask are present, strictly positive, and not crossed (bid <= ask);
+        2. volume > 0 OR openInterest > 0 (a quote nobody has traded is stale);
+        3. the relative spread (ask - bid) / mid <= max_rel_spread, which removes
+           deep ITM/OTM strikes where the spread dominates the price;
+        4. T > 0.
+
+    S0, r and q are accepted for the signature but deliberately NOT used to
+    filter. A parity-based filter here would make the forward-parity test in
+    tests/test_market_data.py circular: it would only check the filter against
+    itself. Parity is the check, not a rule.
 
     Params
     ------
-    chain : output of fetch_option_chain.
-    S0    : current spot of the underlying.
-    r     : risk-free rate (annualised, continuously compounded).
-    q     : net cost-of-carry for THIS underlying -- do not assume it is the
-            same across GLD, SLV, USO, and do not read it off a yfinance
-            "dividend yield" field, which does not mean the same thing for a
-            commodity ETF as it does for a stock.
+    chain : output of fetch_option_chain, with volume and openInterest columns.
+    S0    : current spot of the underlying (unused by the filter, see above).
+    r     : risk-free rate (annualised, continuously compounded), unused likewise.
+    q     : net cost-of-carry for THIS underlying (unused likewise). Do not
+            assume it is the same across GLD, SLV, USO, and do not read it off
+            a yfinance "dividend yield" field, which does not mean the same
+            thing for a commodity ETF as it does for a stock.
+    max_rel_spread : largest accepted (ask - bid) / mid.
 
     Returns
     -------
-    pd.DataFrame, same columns as `chain`, surviving rows only.
+    pd.DataFrame, same columns as `chain`, surviving rows only, original index.
+
+    Raises
+    ------
+    KeyError : if a column needed by the rules above is missing.
     """
-    raise NotImplementedError("QUÊTE 6.1")
+    required = {"strike", "expiry", "T", "type", "bid", "ask", "volume", "openInterest"}
+    missing = required - set(chain.columns)
+    if missing:
+        raise KeyError(f"clean_option_chain: colonnes manquantes {sorted(missing)}")
+
+    bid, ask = chain["bid"], chain["ask"]
+    mid = (bid + ask) / 2
+    priced = (bid > 0) & (ask > 0) & (bid <= ask)   # NaN compares False: rejected
+    traded = (chain["volume"].fillna(0) > 0) | (chain["openInterest"].fillna(0) > 0)
+    tight = (ask - bid) / mid <= max_rel_spread
+    alive = chain["T"] > 0
+
+    return chain.loc[priced & traded & tight & alive].copy()

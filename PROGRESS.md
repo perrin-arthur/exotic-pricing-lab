@@ -24,7 +24,7 @@ Act V **closed at 350/350** ✅
 > 6.1 is scaffolded in code this session, the rest of the table below is a
 > locked (🔒) roadmap, not yet opened.
 
-> Green suite: **90 passed, 3 xfailed** — 2 from quest 6.1 (stubs), 1 from the
+> Green suite: **94 passed, 3 xfailed** — 2 from quest 6.1 (real-data xfail, network), 1 from the
 > Feller helper (Act III audit, see below).
 
 Rule of the game: a quest is only earned once its validation test is
@@ -532,7 +532,7 @@ SVI: per-name second baseline. 6.6 is Arthur's addition: a temporal backtest.
 
 | Quest | Status | XP | Depends on | Validation |
 |---|---|---|---|---|
-| 6.1 Market data ingestion & cleaning (yfinance, GLD/SLV/USO) | 🔓 | 0/40 | 1.1 | `test_clean_option_chain_respecte_parite_forward` — forward parity on cleaned mid-quotes, tolerance scaled to bid-ask spread |
+| 6.1 Market data ingestion & cleaning (yfinance, GLD/SLV/USO) | 🔓 | 0/40 | 1.1 | Offline half done: `clean_option_chain` + 4 green synthetic tests (rejection per rule, parity exact to 1e-10 on BS chain, anti-circularity on S0/r/q, missing-column guard). Real-data tests still xfail: `fetch_*` blocked by network policy (Yahoo hosts 403) |
 | 6.2 Per-name Heston calibration on the market smile | 🔒 | 0/60 | 6.1, 3.2/3.3 | TBD when opened |
 | 6.3 Per-name SVI calibration (second baseline) | 🔒 | 0/50 | 6.1, 1.8 | TBD when opened |
 | 6.4 Correlation reconstructed from historical returns | 🔒 | 0/30 | 6.1, 5.1 | TBD when opened |

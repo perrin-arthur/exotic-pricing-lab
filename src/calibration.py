@@ -317,3 +317,83 @@ def holdout_summary(model_calls: np.ndarray, quotes: pd.DataFrame) -> dict:
     return dict(frac_inside=float(np.mean(np.abs(res) <= 1.0)),
                 median_abs_res=float(np.median(np.abs(res))),
                 n=int(len(res)))
+
+
+# ---------------------------------------------------------------------------
+# Bates = Heston + Merton log-normal jumps (short-end wings)
+# ---------------------------------------------------------------------------
+
+BATES_NAMES = ("v0", "kappa", "theta", "xi", "rho", "lam", "mu_j", "delta")
+BATES_BOUNDS = (
+    np.array([1e-4, 0.05, 1e-4, 0.01, -0.99, 0.0, -0.5, 0.01]),
+    np.array([1.0, 20.0, 1.0, 3.0, 0.99, 5.0, 0.5, 1.0]),
+)
+
+
+def _cf_fn(S_eff: float, T: float, params: dict, r: float):
+    """Characteristic function of ln S_T (Heston, optionally plus Merton jumps)."""
+    from heston import heston_cf
+
+    def phi(u):
+        base = heston_cf(u, S_eff, params["v0"], r, T, params["kappa"], params["theta"],
+                         params["xi"], params["rho"])
+        if "lam" not in params:
+            return base
+        lam, mu, d = params["lam"], params["mu_j"], params["delta"]
+        kbar = np.exp(mu + 0.5 * d * d) - 1.0
+        jump = lam * T * (np.exp(1j * u * mu - 0.5 * d * d * u * u) - 1.0 - 1j * u * kbar)
+        return base * np.exp(jump)
+    return phi
+
+
+def calls_grid_cf(S_eff: float, Ks: np.ndarray, T: float, params: dict, r: float) -> np.ndarray:
+    """Call prices for several strikes of one expiry, for any model in _cf_fn."""
+    phi = _cf_fn(S_eff, T, params, r)
+    u = _U
+    cf_a = phi(u)
+    cf_b = phi(u - 1j)
+    Ks = np.asarray(Ks, dtype=float)
+    phase = np.exp(-1j * u[None, :] * np.log(Ks)[:, None])
+    P2 = 0.5 + np.sum(_WU * np.real(phase * cf_a[None, :] / (1j * u[None, :])), axis=1) / np.pi
+    P1 = 0.5 + np.sum(_WU * np.real(phase * cf_b[None, :] / (1j * u[None, :] * S_eff * np.exp(r * T))),
+                      axis=1) / np.pi
+    return S_eff * P1 - Ks * np.exp(-r * T) * P2
+
+
+def model_calls_cf(quotes: pd.DataFrame, params: dict, r: float) -> np.ndarray:
+    out = np.empty(len(quotes))
+    for expiry, sub in quotes.groupby("expiry", sort=False):
+        F, T = sub["F"].iloc[0], sub["T"].iloc[0]
+        out[quotes.index.get_indexer(sub.index)] = calls_grid_cf(
+            F * np.exp(-r * T), sub["K"].to_numpy(), T, params, r)
+    return out
+
+
+def _residuals_named(x, names, quotes, r):
+    params = dict(zip(names, x))
+    return (model_calls_cf(quotes, params, r) - quotes["C_mid"].to_numpy()) / quotes["half"].to_numpy()
+
+
+def multistart_fit(quotes: pd.DataFrame, r: float, names, lo, hi, n_starts: int = 12, seed: int = 0) -> dict:
+    """Least-squares fit from n_starts Sobol-spread starting points. Keeps the best
+    local minimum found. This is a best-found result, not a proof of the global one."""
+    from scipy.stats import qmc
+    sampler = qmc.Sobol(d=len(names), scramble=True, seed=seed)
+    U = sampler.random(n_starts)
+    starts = lo + U * (hi - lo)
+    best, sse_all = None, []
+    for x0 in starts:
+        res = least_squares(_residuals_named, x0=np.clip(x0, lo + 1e-9, hi - 1e-9),
+                            args=(names, quotes, r), bounds=(lo, hi), x_scale="jac", max_nfev=300)
+        sse_all.append(float(2 * res.cost))
+        if best is None or res.cost < best.cost:
+            best = res
+    resid = best.fun
+    return dict(
+        params=dict(zip(names, map(float, best.x))),
+        residuals=resid,
+        frac_inside=float(np.mean(np.abs(resid) <= 1.0)),
+        median_abs_res=float(np.median(np.abs(resid))),
+        best_sse=float(2 * best.cost),
+        sse_spread=[float(s) for s in sorted(sse_all)],
+    )

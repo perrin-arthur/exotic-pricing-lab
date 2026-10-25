@@ -92,6 +92,7 @@ def _latest(pattern):
     return json.load(open(files[-1]))
 
 
+@pytest.mark.xfail(strict=True, reason="FINDING 6.2: joint Heston misses the band on the term snapshot (GLD 21%, SLV 33%, USO 70%)")
 @pytest.mark.parametrize("name", ["GLD", "SLV", "USO"])
 def test_heston_calibration_reel_dans_la_bande(name):
     """6.2: per-name joint Heston, share of quotes inside the bid-ask band >= 0.80."""
@@ -150,3 +151,22 @@ def test_backtest_temporel_sur_plusieurs_jours():
     if len(days) < MIN_DAYS:
         pytest.skip(f"6.6 needs >= {MIN_DAYS} daily snapshots, have {len(days)} ({days})")
     raise NotImplementedError("6.6 backtest body to be written once snapshots exist")
+
+
+# ---------------------------------------------------------------------------
+# 6.5: out-of-sample comparison on the longest expiry
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", [
+    "GLD", "SLV",
+    pytest.param("USO", marks=pytest.mark.xfail(
+        strict=True,
+        reason="FINDING 6.5 USO: flat BS median 0.327 beats SVI 0.337 and Heston 0.604")),
+])
+def test_holdout_modeles_battent_bs_plat(name):
+    """6.5 criterion, fixed before reading the holdout: BOTH Heston and SVI must have a
+    smaller median |residual| (half-spreads) than flat BS on the held-out expiry."""
+    res = _latest("holdout_*.json")[name]
+    flat = res["flat_bs"]["median_abs_res"]
+    assert res["heston"]["median_abs_res"] < flat
+    assert res["svi_term"]["median_abs_res"] < flat

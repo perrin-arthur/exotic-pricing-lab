@@ -9,7 +9,7 @@ Act V **closed at 350/350** ✅
 > pricer, control variate reused from Act II, boss figure + sweep. Session
 > notes and pitfalls below.
 >
-> **ACT VI 🔓 OPENED — quest 6.1 only.** Scope locked in with Arthur: Heston
+> **ACT VI 🔓 OPEN — status after the run of 2026-10-25.** 6.1 ✅, 6.3 ✅, 6.4 ✅, 6.7 ✅, 6.2 / 6.5 / BOSS 6 partial (findings below), 6.6 not run (data). Earlier banner text follows: Scope locked in with Arthur: Heston
 > calibrated on REAL market data (yfinance, 3 commodity ETFs: GLD, SLV, USO —
 > yfinance exposes no option chain on raw commodity futures, only on the
 > listed ETFs that replicate them), two-step multi-asset extension (each name
@@ -532,14 +532,14 @@ SVI: per-name second baseline. 6.6 is Arthur's addition: a temporal backtest.
 
 | Quest | Status | XP | Depends on | Validation |
 |---|---|---|---|---|
-| 6.1 Market data ingestion & cleaning (yfinance, GLD/SLV/USO) | 🔓 | 0/40 | 1.1 | `clean_option_chain` + 4 green synthetic tests. `fetch_*` implemented once Yahoo was allowed. `test_fetch_option_chain_colonnes_et_types` now XPASS(strict): marker to remove by Arthur. `test_clean_option_chain_respecte_parite_forward` now XPASS(strict): the forward is estimated per expiry from the parity itself (median of K + e^{rT}(C−P)), not from spot. 73/73 pairs inside the bid-ask band, worst |residual|/spread 0.67. Both 6.1 markers to remove by Arthur. Trade-off: the test checks dispersion across strikes within each expiry, not the level of the forward against spot (carry is not tested here). |
-| 6.2 Per-name Heston calibration on the market smile | 🔒 | 0/60 | 6.1, 3.2/3.3 | TBD when opened |
-| 6.3 Per-name SVI calibration (second baseline) | 🔒 | 0/50 | 6.1, 1.8 | TBD when opened |
-| 6.4 Correlation reconstructed from historical returns | 🔒 | 0/30 | 6.1, 5.1 | TBD when opened |
-| 6.5 Heston vs SVI vs flat BS — intra-day out-of-sample (strike/expiry holdout) | 🔒 | 0/40 | 6.2, 6.3 | TBD when opened |
-| 6.6 Temporal backtest — parameter stability + J+1 predictive power | 🔒 | 0/50 | 6.2, 6.3 | TBD when opened |
-| 6.7 Worst-of/BRC pricing on real calibrated marginals + reconstructed correlation | 🔒 | 0/50 | 6.2, 6.4, Act V | TBD when opened |
-| **BOSS 6** Fully market-calibrated BRC worst-of + figure | 🔒 | 0/80 | 6.1–6.7 | TBD when opened |
+| 6.1 Market data ingestion & cleaning (yfinance, GLD/SLV/USO) | ✅ | to score | 1.1 | `test_clean_option_chain_respecte_parite_forward` (73/73 pairs in band, forward per expiry from parity), `test_fetch_option_chain_colonnes_et_types`, 4 synthetic tests. Trade-off: parity checked across strikes within an expiry, not forward vs spot (carry untested) |
+| 6.2 Per-name Heston calibration on the term smile | ⚠️ partial | to score | 6.1, 3.2/3.3 | Machinery ✅: fast pricer (1e-9 vs quad), synthetic recovery to 1e-3. Market fit ✗ FINDING: joint Heston misses the band: GLD 21%, SLV 33%, USO 70% (median 2.2 / 1.5 / 0.6 half-spreads). Per-expiry Heston also hits bounds on the short end. xfail(strict) in `test_heston_calibration_reel_dans_la_bande` |
+| 6.3 Per-name SVI calibration (second baseline) | ✅ | to score | 6.1, 1.8 | Per expiry, raw SVI, same half-spread residuals: GLD 89.0%, SLV 93.5%, USO 99.8% inside the band; synthetic 7e-13; no negative total variance |
+| 6.4 Correlation reconstructed from historical returns | ✅ | to score | 6.1, 5.1 | 2y log returns, common dates: GLD–SLV 0.79, GLD–USO −0.02, SLV–USO −0.05. Eigenvalue repair kept (valid PSD). Real-data test: GLD–SLV > 0.5 |
+| 6.5 Heston vs SVI vs flat BS — holdout on the longest expiry | ⚠️ partial | to score | 6.2, 6.3 | Median |res| (half-spreads), Heston / SVI / flat BS: GLD 1.48 / 0.62 / 3.02 ✅; SLV 1.81 / 0.72 / 6.16 ✅; USO 0.60 / 0.34 / 0.33 ✗ FINDING: flat BS wins on USO. Criterion fixed in advance: both must beat flat BS on median. xfail(strict) on USO |
+| 6.6 Temporal backtest — parameter stability + J+1 predictive power | 🔒 | to score | 6.2, 6.3 | NOT RUN: needs ≥ 5 daily snapshots, 1 available. `scripts/collect_market.py` must run daily. Test skipped with the count |
+| 6.7 Worst-of/BRC pricing on calibrated marginals + reconstructed correlation | ✅ | to score | 6.2, 6.4, Act V | Correlated Heston paths (PSD guard, exact correlation at constant variance). BRC 10% coupon, 70% barrier, maturity 2027-06-17 (T=0.64): Heston 0.874 ± 0.002 vs flat BS 0.910 ± 0.002; knock-in prob 54% vs 49% |
+| **BOSS 6** Fully market-calibrated BRC worst-of + figure | ⚠️ partial | to score | 6.1–6.7 | `figures/boss6_brc_calibrated.png`, `figures/boss6_results.json`. Price sensitivity to correlation small (Heston 0.870 → 0.874 from λ=0 to 1). The 0.036 Heston–BS gap rests on a marginal that does not fit the market (6.2), so it is not a validated price. |
 
 ### 6.6 — the hypothesis to settle (Arthur's addition, not originally scoped)
 

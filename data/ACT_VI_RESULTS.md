@@ -137,7 +137,7 @@ Paramétrisation Gatheral–Jacquier : une surface, paramètres globaux ρ, η, 
 | SLV | +0.015 | 1.398 | 0.413 | 41.6% | 1.32 | 66.7% | 0.88 |
 | USO | +0.151 | 0.708 | 0.575 | 83.7% | 0.42 | 79.7% | 0.44 |
 
-L'abritrage est bien éliminé, mais la forme partagée coûte de l'ajustement : 31 / 42 / 84 % contre 89 / 94 / 99.8 % pour des tranches indépendantes. Le poids de pénalité n'y change rien (testé 0.5, 5, 50) : la contrainte est la structure, pas la pénalité.
+L'arbitrage est bien éliminé, mais la forme partagée coûte de l'ajustement : 31 / 42 / 84 % contre 89 / 94 / 99.8 % pour des tranches indépendantes. Le poids de pénalité n'y change rien (testé 0.5, 5, 50) : la contrainte est la structure, pas la pénalité.
 
 ## 9. Heston et Bates, multi-départs (section 2)
 

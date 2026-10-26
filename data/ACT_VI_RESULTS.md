@@ -158,3 +158,13 @@ Heston : un seul minimum trouvé depuis tous les départs, la borne ξ = 3 est a
 
 Non exécuté sur des données réelles : un seul snapshot, il en faut 5. La logique est écrite (`src/backtest.py`) et vérifiée sur une série de contrôle fabriquée à partir du snapshot. Ces chiffres ne sont pas des résultats et ne sont pas enregistrés.
 
+
+## 11. Snapshot 2026-10-26 — non calibrable en l'état
+
+Collecté avec `scripts/collect_market.py`. Les spots sont identiques à ceux du 25 (pas de nouvelle clôture le week-end). Les cotes sont dégradées : 142 cotations SLV sur 2064 ont un bid et un ask positifs, et les bids nuls dominent en pré-ouverture.
+
+- Après nettoyage : GLD 257 lignes, SLV 117, USO 149.
+- SLV : aucune échéance n'a au moins 3 paires call/put (parité impossible), donc pas de forward, donc pas de calibration SVI.
+- GLD : SVI calibré, 58.3 % dans la bande (contre 89.0 % le 25). Résultat indicatif seulement, non retenu.
+
+Le snapshot est conservé tel quel dans `data/`. Il faut un snapshot en séance pour recalibrer.

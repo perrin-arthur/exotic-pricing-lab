@@ -1,0 +1,20 @@
+{
+  "snapshot": "2026-10-27",
+  "names": {
+    "GLD": {
+      "status": "not calibrable",
+      "reason": "no expiry with >= 3 call/put pairs after cleaning",
+      "n_clean": 243
+    },
+    "SLV": {
+      "status": "not calibrable",
+      "reason": "no expiry with >= 3 call/put pairs after cleaning",
+      "n_clean": 115
+    },
+    "USO": {
+      "status": "not calibrable",
+      "reason": "no expiry with >= 3 call/put pairs after cleaning",
+      "n_clean": 144
+    }
+  }
+}

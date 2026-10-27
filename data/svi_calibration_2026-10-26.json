@@ -1,0 +1,37 @@
+{
+  "snapshot": "2026-10-26",
+  "names": {
+    "GLD": {
+      "status": "calibrated",
+      "frac_inside": 0.5833333333333334,
+      "n_quotes": 12,
+      "n_clean": 257,
+      "slices": {
+        "2027-03-31": {
+          "n": 12,
+          "frac_inside": 0.5833333333333334,
+          "median_abs_res": 0.8746363364722858,
+          "min_total_variance": 0.022314907172643086,
+          "params": {
+            "a": 0.022304160008182087,
+            "b": 0.030448971623178916,
+            "rho": 0.9989999772200664,
+            "m": 0.1151363220067186,
+            "sigma": 0.007894034974705318
+          },
+          "T": 0.4273972602739726
+        }
+      }
+    },
+    "SLV": {
+      "status": "not calibrable",
+      "reason": "no expiry with >= 3 call/put pairs after cleaning",
+      "n_clean": 117
+    },
+    "USO": {
+      "status": "not calibrable",
+      "reason": "no expiry with >= 3 call/put pairs after cleaning",
+      "n_clean": 149
+    }
+  }
+}

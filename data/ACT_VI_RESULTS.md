@@ -168,3 +168,17 @@ Collecté avec `scripts/collect_market.py`. Les spots sont identiques à ceux du
 - GLD : SVI calibré, 58.3 % dans la bande (contre 89.0 % le 25). Résultat indicatif seulement, non retenu.
 
 Le snapshot est conservé tel quel dans `data/`. Il faut un snapshot en séance pour recalibrer.
+
+## 12. Calibration SVI par jour : 2026-10-25, 2026-10-26, 2026-10-27
+
+Relancée avec `scripts/fit_svi_day.py` (une seule source de calibration, un fichier par date). Un nom sans échéance à au moins 3 paires call/put après nettoyage est marqué « non calibrable », pas ignoré.
+
+| date | GLD | SLV | USO | cause |
+|---|---|---|---|---|
+| 2026-10-25 (dimanche, cotes de la clôture de vendredi) | 89.0 % | 93.5 % | 99.8 % | données valides |
+| 2026-10-26 (lundi, pré-ouverture) | 58.3 % | non calibrable | non calibrable | bids nuls en pré-ouverture |
+| 2026-10-27 (mardi, pré-ouverture à 10 h 27 UTC) | non calibrable | non calibrable | non calibrable | bids nuls en pré-ouverture |
+
+Seul le 25 est exploitable. Les 26 et 27 ont été collectés avant l'ouverture (13 h 30 UTC). Pour une calibration du jour, relancer `scripts/collect_market.py` après 14 h UTC puis `scripts/fit_svi_day.py` sur la date.
+
+Correction faite au passage : `forward_by_expiry` plantait avec un KeyError quand aucune échéance n'a 3 paires. Il renvoie maintenant un cadre vide.

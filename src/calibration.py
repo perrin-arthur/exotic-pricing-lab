@@ -45,6 +45,8 @@ def forward_by_expiry(clean: pd.DataFrame, r: float, min_pairs: int = 3) -> pd.D
             continue
         F = np.median(K + np.exp(r * T) * (C - P))
         rows.append(dict(expiry=expiry, F=float(F), T=float(T), n_pairs=len(idx)))
+    if not rows:
+        return pd.DataFrame(columns=["F", "T", "n_pairs"], index=pd.Index([], name="expiry"), dtype=float)
     return pd.DataFrame(rows).set_index("expiry")
 
 
